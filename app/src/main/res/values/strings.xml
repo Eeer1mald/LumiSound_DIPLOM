@@ -1,0 +1,45 @@
+<resources>
+    <string name="app_name">LumiSound</string>
+
+    <!-- Welcome Screen -->
+    <string name="tagline">Твоя музыка. Твой вкус. Твоя оценка</string>
+
+    <!-- Login Screen -->
+    <string name="login_title">Вход</string>
+    <string name="email">Email</string>
+    <string name="password">Пароль</string>
+    <string name="login">Войти</string>
+    <string name="forgot_password">Забыли пароль?</string>
+    <string name="no_account">Нет аккаунта?</string>
+    <string name="register">Регистрация</string>
+    <string name="email_invalid">Введите корректный email</string>
+    <string name="password_invalid">Минимум 8 символов</string>
+    <string name="login_error_generic">Не удалось войти. Повторите попытку.</string>
+
+    <!-- Register Screen -->
+    <string name="register_title">Создать аккаунт</string>
+    <string name="username">Имя пользователя</string>
+    <string name="username_placeholder">Введите имя пользователя</string>
+    <string name="password_placeholder">Введите пароль</string>
+    <string name="confirm_password">Подтверждение пароля</string>
+    <string name="confirm_password_placeholder">Повторите пароль</string>
+    <string name="accept_terms">Я принимаю условия использования и политику конфиденциальности</string>
+    <string name="create_account">Создать аккаунт</string>
+    <string name="already_have_account">Уже есть аккаунт? Войти</string>
+    <string name="passwords_do_not_match">Пароли должны совпадать</string>
+    <string name="registration_stub">Регистрация пока не реализована</string>
+
+    <!-- Verify Email Screen -->
+    <string name="verify_email_title">Подтвердите свой аккаунт</string>
+    <string name="verify_email_message">Мы отправили вам письмо для подтверждения. Пожалуйста, проверьте свою почту.</string>
+
+    <!-- Home Screen -->
+    <string name="home_greeting">Привет, %1$s!</string>
+    <string name="home_search_placeholder">Поиск музыки, исполнителей, жанров</string>
+    <string name="home_recommendations_title">Рекомендации для вас</string>
+    <string name="home_tab_home">Домой</string>
+    <string name="home_tab_ratings">Рецензии</string>
+    <string name="home_tab_search">Поиск</string>
+    <string name="home_tab_profile">Профиль</string>
+    <string name="home_profile_cd">Профиль</string>
+</resources>
