@@ -40,6 +40,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             // Загружаем популярные треки как рекомендации
+            // TODO: Реализовать отдельный метод для получения рекомендаций в репозитории
             musicRepository.searchTracks("", limit = 10)
                 .onSuccess { tracks ->
                     _uiState.value = _uiState.value.copy(
@@ -55,7 +56,8 @@ class HomeViewModel @Inject constructor(
                     _isLoading.value = false
                 }
                 .onFailure {
-                    // В случае ошибки оставляем пустой список
+                    // В случае ошибки оставляем пустой список (не показываем ошибку пользователю)
+                    // TODO: Добавить обработку ошибок с возможностью показа пользователю
                     _uiState.value = _uiState.value.copy(recommendations = emptyList())
                     _isLoading.value = false
                 }

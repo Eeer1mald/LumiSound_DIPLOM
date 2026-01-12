@@ -22,10 +22,16 @@ class MusicRepository @Inject constructor(
         val hdImageUrl = audiusApi.getArtworkUrl(this.artwork, "1000x1000")
         val streamUrl = audiusApi.getStreamUrl(this.id)
         
+        // Извлекаем фотографию артиста
+        val artistImageUrl = audiusApi.getProfilePictureUrl(this.artist.profilePicture, "480x480")
+        val artistHdImageUrl = audiusApi.getProfilePictureUrl(this.artist.profilePicture, "1000x1000")
+        
         return Track(
             id = this.id,
             name = this.title,
             artist = this.artist.name,
+            artistId = this.artist.id,
+            artistImageUrl = artistHdImageUrl ?: artistImageUrl,
             imageUrl = previewImageUrl,
             hdImageUrl = hdImageUrl ?: artworkUrl,
             previewUrl = streamUrl,

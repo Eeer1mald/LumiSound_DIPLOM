@@ -3,8 +3,8 @@ package com.example.lumisound.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // LumiSound Brand Palette (Premium Dark Theme - Figma Design)
-// Основной фон: тёмный индиго
-val ColorBackground = Color(0xFF0F1020)
+// Основной фон: тёмный индиго (более темный, ближе к черному)
+val ColorBackground = Color(0xFF0A0B15)
 
 // Основной акцент (кнопки): градиент #7B6DFF → #FF5C6C
 val GradientStart = Color(0xFF7B6DFF)  // Фиолетовый

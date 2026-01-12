@@ -116,6 +116,13 @@ class AudiusApiService @Inject constructor(
             ?: artwork?.get("1000x1000")?.jsonPrimitive?.content
     }
     
+    fun getProfilePictureUrl(profilePicture: JsonObject?, size: String = "480x480"): String? {
+        return profilePicture?.get(size)?.jsonPrimitive?.content
+            ?: profilePicture?.get("150x150")?.jsonPrimitive?.content
+            ?: profilePicture?.get("1000x1000")?.jsonPrimitive?.content
+            ?: profilePicture?.get("200x200")?.jsonPrimitive?.content
+    }
+    
     fun getStreamUrl(trackId: String): String {
         return "$currentHost/v1/tracks/$trackId/stream"
     }

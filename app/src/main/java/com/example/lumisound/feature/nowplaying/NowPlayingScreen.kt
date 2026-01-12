@@ -82,6 +82,7 @@ fun NowPlayingScreen(
     track: Track,
     onClose: () -> Unit,
     onNavigate: (String) -> Unit = {},
+    onArtistClick: (String, String?) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
@@ -225,7 +226,10 @@ fun NowPlayingScreen(
                     text = track.artist,
                     color = ColorSecondary,
                     fontSize = 16.sp,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.clickable {
+                        onArtistClick(track.artist, track.artistImageUrl)
+                    }
                 )
             }
 

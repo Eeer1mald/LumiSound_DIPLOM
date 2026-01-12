@@ -1,5 +1,8 @@
 package com.example.lumisound.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -12,6 +15,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -28,7 +33,13 @@ import com.example.lumisound.feature.profile.ProfileScreen
 import com.example.lumisound.feature.ratings.RatedTrack
 import com.example.lumisound.feature.ratings.RatingsScreen
 import com.example.lumisound.feature.search.SearchScreen
+import com.example.lumisound.feature.artist.ArtistCardScreen
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
+/**
+ * Навигационные маршруты основного приложения.
+ */
 sealed class MainDestination(val route: String) {
     data object Home : MainDestination("home")
     data object Search : MainDestination("search")
@@ -37,7 +48,30 @@ sealed class MainDestination(val route: String) {
     data class NowPlaying(val trackId: String = "{trackId}") : MainDestination("now_playing/{trackId}") {
         fun createRoute(trackId: String) = "now_playing/$trackId"
     }
+    data class Artist(val artistName: String = "{artistName}", val artistImageUrl: String = "{artistImageUrl}") : MainDestination("artist/{artistName}/{artistImageUrl}") {
+        fun createRoute(artistName: String, artistImageUrl: String?): String {
+            val encodedName = URLEncoder.encode(artistName, StandardCharsets.UTF_8.toString())
+            val encodedImageUrl = URLEncoder.encode(artistImageUrl ?: "", StandardCharsets.UTF_8.toString())
+            return "artist/$encodedName/$encodedImageUrl"
+        }
+    }
 }
+
+/**
+ * Порядок вкладок для определения направления анимации при переключении.
+ */
+private val TAB_ORDER = listOf("home", "search", "ratings", "profile")
+
+/**
+ * Получает индекс вкладки по её маршруту.
+ */
+private fun getTabIndex(route: String?): Int {
+    return TAB_ORDER.indexOf(route ?: "").coerceAtLeast(0)
+}
+
+// Анимации переключения между вкладками убраны - используется HorizontalPager для плавного свайпа
+// Старые функции createTabEnterTransition и createTabExitTransition удалены, так как они вызывали конфликт
+// с HorizontalPager и приводили к тряске экрана и белым полоскам
 
 @Composable
 fun MainNavGraph(
@@ -75,6 +109,7 @@ fun MainNavGraph(
         )
     )
 
+    // TODO: Заменить mock данные на реальные из репозитория
     val mockRatedTracks = listOf(
         RatedTrack(
             id = "1",
@@ -92,158 +127,38 @@ fun MainNavGraph(
         )
     )
 
-
-    // Порядок вкладок для определения направления анимации
-    val tabOrder = listOf("home", "search", "ratings", "profile")
-    
-    fun getTabIndex(route: String?): Int {
-        return (tabOrder.indexOf(route ?: "")).coerceAtLeast(0)
-    }
-    
     NavHost(
         navController = navController,
         startDestination = startDestination
     ) {
         // Основные вкладки с swipe navigation и mini player
-        composable(
+        addTabDestination(
             route = MainDestination.Home.route,
-            enterTransition = {
-                val fromIndex = getTabIndex(initialState.destination.route)
-                val toIndex = getTabIndex(targetState.destination.route)
-                val isSlidingRight = toIndex > fromIndex
-                slideInHorizontally(
-                    initialOffsetX = { if (isSlidingRight) it else -it },
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeIn(animationSpec = tween(250))
-            },
-            exitTransition = {
-                val fromIndex = getTabIndex(initialState.destination.route)
-                val toIndex = getTabIndex(targetState.destination.route)
-                val isSlidingRight = toIndex > fromIndex
-                slideOutHorizontally(
-                    targetOffsetX = { if (isSlidingRight) -it else it },
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeOut(animationSpec = tween(250))
-            }
-        ) {
-            SwipeableNavHost(
-                navController = navController,
-                currentRoute = "home",
-                userName = userName,
-                onNavigate = { route -> navController.navigate(route) }
-            )
-        }
-
-        composable(
+            currentRoute = "home",
+            navController = navController,
+            userName = userName
+        )
+        
+        addTabDestination(
             route = MainDestination.Search.route,
-            enterTransition = {
-                val fromIndex = getTabIndex(initialState.destination.route)
-                val toIndex = getTabIndex(targetState.destination.route)
-                val isSlidingRight = toIndex > fromIndex
-                slideInHorizontally(
-                    initialOffsetX = { if (isSlidingRight) it else -it },
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeIn(animationSpec = tween(250))
-            },
-            exitTransition = {
-                val fromIndex = getTabIndex(initialState.destination.route)
-                val toIndex = getTabIndex(targetState.destination.route)
-                val isSlidingRight = toIndex > fromIndex
-                slideOutHorizontally(
-                    targetOffsetX = { if (isSlidingRight) -it else it },
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeOut(animationSpec = tween(250))
-            }
-        ) {
-            SwipeableNavHost(
-                navController = navController,
-                currentRoute = "search",
-                userName = userName,
-                onNavigate = { route -> navController.navigate(route) }
-            )
-        }
-
-        composable(
+            currentRoute = "search",
+            navController = navController,
+            userName = userName
+        )
+        
+        addTabDestination(
             route = MainDestination.Ratings.route,
-            enterTransition = {
-                val fromIndex = getTabIndex(initialState.destination.route)
-                val toIndex = getTabIndex(targetState.destination.route)
-                val isSlidingRight = toIndex > fromIndex
-                slideInHorizontally(
-                    initialOffsetX = { if (isSlidingRight) it else -it },
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeIn(animationSpec = tween(250))
-            },
-            exitTransition = {
-                val fromIndex = getTabIndex(initialState.destination.route)
-                val toIndex = getTabIndex(targetState.destination.route)
-                val isSlidingRight = toIndex > fromIndex
-                slideOutHorizontally(
-                    targetOffsetX = { if (isSlidingRight) -it else it },
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeOut(animationSpec = tween(250))
-            }
-        ) {
-            SwipeableNavHost(
-                navController = navController,
-                currentRoute = "ratings",
-                userName = userName,
-                onNavigate = { route -> navController.navigate(route) }
-            )
-        }
-
-        composable(
+            currentRoute = "ratings",
+            navController = navController,
+            userName = userName
+        )
+        
+        addTabDestination(
             route = MainDestination.Profile.route,
-            enterTransition = {
-                val fromIndex = getTabIndex(initialState.destination.route)
-                val toIndex = getTabIndex(targetState.destination.route)
-                val isSlidingRight = toIndex > fromIndex
-                slideInHorizontally(
-                    initialOffsetX = { if (isSlidingRight) it else -it },
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeIn(animationSpec = tween(250))
-            },
-            exitTransition = {
-                val fromIndex = getTabIndex(initialState.destination.route)
-                val toIndex = getTabIndex(targetState.destination.route)
-                val isSlidingRight = toIndex > fromIndex
-                slideOutHorizontally(
-                    targetOffsetX = { if (isSlidingRight) -it else it },
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeOut(animationSpec = tween(250))
-            }
-        ) {
-            SwipeableNavHost(
-                navController = navController,
-                currentRoute = "profile",
-                userName = userName,
-                onNavigate = { route -> navController.navigate(route) }
-            )
-        }
+            currentRoute = "profile",
+            navController = navController,
+            userName = userName
+        )
 
         composable(
             route = MainDestination.NowPlaying().route,
@@ -258,9 +173,13 @@ fun MainNavGraph(
                 NowPlayingScreen(
                     track = track,
                     onClose = { navController.popBackStack() },
-                    onNavigate = { route -> navController.navigate(route) }
+                    onNavigate = { route -> navController.navigate(route) },
+                    onArtistClick = { artistName, artistImageUrl ->
+                        navController.navigate(MainDestination.Artist().createRoute(artistName, artistImageUrl))
+                    }
                 )
             } else {
+                // TODO: Убрать fallback на mock данные после реализации загрузки треков
                 // Fallback на mock данные если трек не найден
                 val trackId = backStackEntry.arguments?.getString("trackId") ?: "1"
                 val track = mockTracks.find { it.id == trackId } ?: mockTracks[0]
@@ -274,11 +193,60 @@ fun MainNavGraph(
                         genre = null
                     ),
                     onClose = { navController.popBackStack() },
-                    onNavigate = { route -> navController.navigate(route) }
+                    onNavigate = { route -> navController.navigate(route) },
+                    onArtistClick = { artistName, artistImageUrl ->
+                        navController.navigate(MainDestination.Artist().createRoute(artistName, artistImageUrl))
+                    }
                 )
             }
         }
+        
+        composable(
+            route = MainDestination.Artist().route,
+            arguments = listOf(
+                navArgument("artistName") { type = NavType.StringType },
+                navArgument("artistImageUrl") { type = NavType.StringType }
+            ),
+            enterTransition = { fadeIn(animationSpec = tween(300)) },
+            exitTransition = { fadeOut(animationSpec = tween(300)) }
+        ) { backStackEntry ->
+            val artistName = backStackEntry.arguments?.getString("artistName")?.let {
+                java.net.URLDecoder.decode(it, StandardCharsets.UTF_8.toString())
+            } ?: ""
+            val artistImageUrl = backStackEntry.arguments?.getString("artistImageUrl")?.let {
+                val decoded = java.net.URLDecoder.decode(it, StandardCharsets.UTF_8.toString())
+                if (decoded.isEmpty()) null else decoded
+            }
+            
+            ArtistCardScreen(
+                artistName = artistName,
+                artistImageUrl = artistImageUrl,
+                onClose = { navController.popBackStack() }
+            )
+        }
+    }
+}
 
+/**
+ * Добавляет destination для вкладки без анимаций переключения (анимация выполняется через HorizontalPager).
+ */
+private fun NavGraphBuilder.addTabDestination(
+    route: String,
+    currentRoute: String,
+    navController: NavHostController,
+    userName: String
+) {
+    composable(
+        route = route
+        // Убираем анимации - HorizontalPager сам обеспечивает плавный свайп
+        // Не указываем enterTransition и exitTransition, чтобы избежать конфликта с HorizontalPager
+    ) {
+        SwipeableNavHost(
+            navController = navController,
+            currentRoute = currentRoute,
+            userName = userName,
+            onNavigate = { route -> navController.navigate(route) }
+        )
     }
 }
 
