@@ -134,6 +134,22 @@ class PlayerViewModel @Inject constructor(
         _currentPosition.value = 0L
     }
     
+    // Синхронизирует состояние ViewModel с реальным состоянием плеера
+    // Используется при открытии NowPlayingScreen, чтобы отобразить актуальное состояние
+    fun syncPlayerState() {
+        val player = audioPlayerService.getPlayer()
+        if (player != null) {
+            _isPlaying.value = player.isPlaying
+            _currentPosition.value = audioPlayerService.getCurrentPosition()
+            _duration.value = audioPlayerService.getDuration()
+            
+            // Если плеер играет, но обновления позиции не запущены, запускаем их
+            if (player.isPlaying && positionUpdateJob == null) {
+                startPositionUpdates()
+            }
+        }
+    }
+    
     private fun startPositionUpdates() {
         stopPositionUpdates()
         positionUpdateJob = viewModelScope.launch {

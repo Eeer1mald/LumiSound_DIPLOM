@@ -41,6 +41,7 @@ import com.example.lumisound.feature.home.components.TopAppBar
 import com.example.lumisound.ui.theme.ColorBackground
 import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.ColorSecondary
+import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
 
@@ -81,9 +82,7 @@ fun PlaylistsScreen(
                     modifier = Modifier
                         .size(40.dp)
                         .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(GradientStart, GradientEnd)
-                            ),
+                            color = GradientStart, // Однотонный акцентный цвет
                             shape = RoundedCornerShape(20.dp)
                         )
                         .shadow(
@@ -140,17 +139,12 @@ fun PlaylistsScreen(
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .background(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(
-                                        Color(0xFF1A1B2E),
-                                        Color(0xFF16182A)
-                                    )
-                                ),
+                                color = ColorSurface, // Тёмно-серый вместо градиента
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .border(
                                 width = 1.dp,
-                                color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
+                                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .padding(32.dp)
@@ -159,12 +153,7 @@ fun PlaylistsScreen(
                             modifier = Modifier
                                 .size(80.dp)
                                 .background(
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(
-                                            GradientStart.copy(alpha = 0.2f),
-                                            GradientEnd.copy(alpha = 0.2f)
-                                        )
-                                    ),
+                                    color = GradientStart.copy(alpha = 0.2f), // Однотонный акцентный цвет
                                     shape = RoundedCornerShape(18.dp)
                                 )
                                 .border(
@@ -207,9 +196,7 @@ fun PlaylistsScreen(
                                 .fillMaxWidth()
                                 .height(48.dp)
                                 .background(
-                                    brush = Brush.horizontalGradient(
-                                        colors = listOf(GradientStart, GradientEnd)
-                                    ),
+                                    color = GradientStart, // Однотонный акцентный цвет вместо градиента
                                     shape = RoundedCornerShape(24.dp)
                                 )
                                 .shadow(
@@ -269,17 +256,12 @@ private fun PlaylistCard(
         modifier = modifier
             .fillMaxWidth()
             .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF1A1B2E).copy(alpha = 0.8f),
-                        Color(0xFF16182A).copy(alpha = 0.8f)
-                    )
-                ),
+                color = ColorSurface.copy(alpha = 0.8f), // Тёмно-серый вместо градиента
                 shape = RoundedCornerShape(12.dp)
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
+                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
                 shape = RoundedCornerShape(12.dp)
             )
             .clickable(onClick = onClick)
@@ -299,24 +281,13 @@ private fun PlaylistCard(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF1A1B2E),
-                                    Color(0xFF16182A)
-                                )
-                            )
-                        )
+                        .background(ColorSurface) // Тёмно-серый вместо градиента
                 )
             } else {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(playlist.gradient.first, playlist.gradient.second)
-                            )
-                        ),
+                        .background(ColorSurface), // Тёмно-серый вместо градиента плейлиста
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -333,12 +304,8 @@ private fun PlaylistCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.6f)
-                            )
-                        )
+                        // Заменён вертикальный градиент на однотонный цвет с прозрачностью
+                        Color.Black.copy(alpha = 0.3f) // Однотонный тёмный цвет вместо градиента
                     )
                     .padding(12.dp),
                 contentAlignment = Alignment.BottomEnd
@@ -347,9 +314,7 @@ private fun PlaylistCard(
                     modifier = Modifier
                         .size(40.dp)
                         .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(GradientStart, GradientEnd)
-                            ),
+                            color = GradientStart, // Однотонный акцентный цвет
                             shape = RoundedCornerShape(20.dp)
                         )
                         .shadow(
@@ -399,17 +364,12 @@ private fun CreatePlaylistCard(
             .fillMaxWidth()
             .aspectRatio(1f)
             .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF1A1B2E).copy(alpha = 0.6f),
-                        Color(0xFF16182A).copy(alpha = 0.6f)
-                    )
-                ),
+                color = ColorSurface.copy(alpha = 0.6f), // Тёмно-серый вместо градиента
                 shape = RoundedCornerShape(12.dp)
             )
             .border(
                 width = 2.dp,
-                color = Color(0xFF2A2D3E).copy(alpha = 0.5f),
+                color = Color(0xFF1F1F1F).copy(alpha = 0.5f), // Тёмно-серый вместо 0xFF2A2D3E
                 shape = RoundedCornerShape(12.dp)
             )
             .clickable(onClick = onClick),
@@ -423,12 +383,7 @@ private fun CreatePlaylistCard(
                 modifier = Modifier
                     .size(64.dp)
                     .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                GradientStart.copy(alpha = 0.2f),
-                                GradientEnd.copy(alpha = 0.2f)
-                            )
-                        ),
+                                    color = GradientStart.copy(alpha = 0.2f), // Однотонный акцентный цвет
                         shape = RoundedCornerShape(18.dp)
                     )
                     .border(

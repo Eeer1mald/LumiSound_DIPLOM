@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
@@ -47,12 +48,15 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.example.lumisound.R
+import com.example.lumisound.data.model.Track
 import com.example.lumisound.feature.home.components.SearchField
 import com.example.lumisound.feature.home.components.TopAppBar
 import com.example.lumisound.feature.home.components.TrackCard
+import com.example.lumisound.feature.nowplaying.PlayerViewModel
 import com.example.lumisound.ui.theme.ColorBackground
 import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.ColorSecondary
+import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
 import com.example.lumisound.ui.theme.LumiSoundTheme
@@ -61,7 +65,8 @@ import com.example.lumisound.ui.theme.LumiSoundTheme
 fun HomeScreen(
     navController: NavHostController,
     userName: String = "Пользователь",
-    viewModel: HomeViewModel = hiltViewModel()
+    viewModel: HomeViewModel = hiltViewModel(),
+    playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
@@ -81,11 +86,16 @@ fun HomeScreen(
                 userName = state.userName.ifEmpty { userName }
             )
             
-            // Scrollable Content
+            // Scrollable Content - оптимизация scrollState с graphicsLayer для 120Hz
+            val scrollState = rememberScrollState()
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .graphicsLayer {
+                        // Кешируем графический слой для ускорения скролла на 120Hz
+                        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+                    }
+                    .verticalScroll(scrollState)
                     .padding(horizontal = 16.dp)
             ) {
                 // Greeting - точные отступы как в Figma
@@ -156,13 +166,25 @@ fun HomeScreen(
                         contentPadding = PaddingValues(horizontal = 0.dp),
                         modifier = Modifier.padding(bottom = 24.dp)
                     ) {
-                        itemsIndexed(state.recommendations) { index, item ->
+                        itemsIndexed(
+                            items = state.recommendations,
+                            key = { _, item -> item.id },
+                            contentType = { _, _ -> "track_card" } // Оптимизация для LazyRow
+                        ) { index, item ->
                             TrackCard(
                                 track = item,
                                 modifier = Modifier,
                                 onClick = { 
-                                    // Навигация к экрану воспроизведения
-                                    navController.navigate("now_playing/${item.id}") 
+                                    // Запускаем трек без навигации в плеер
+                                    val track = Track(
+                                        id = item.id,
+                                        name = item.title,
+                                        artist = item.artist,
+                                        imageUrl = item.coverUrl,
+                                        previewUrl = null,
+                                        genre = null
+                                    )
+                                    playerViewModel.playTrack(track)
                                 },
                                 testTag = "home_card_${index}"
                             )
@@ -172,6 +194,14 @@ fun HomeScreen(
 
                 // Empty State Placeholder - показываем только если нет рекомендаций и не загружается
                 if (!isLoading && state.recommendations.isEmpty()) {
+                    // Оптимизация: используем remember для градиентов
+                    // Заменены градиенты на однотонные цвета
+                    val emptyStateColor = remember {
+                        ColorSurface // Тёмно-серый вместо градиента
+                    }
+                    val iconColorSolid = remember {
+                        GradientStart // Однотонный акцентный цвет
+                    }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -182,17 +212,12 @@ fun HomeScreen(
                                 spotColor = GradientStart.copy(alpha = 0.1f)
                             )
                             .background(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(
-                                        Color(0xFF1A1B2E),
-                                        Color(0xFF16182A)
-                                    )
-                                ),
+                                color = emptyStateColor, // Однотонный цвет вместо градиента
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .border(
                                 width = 1.dp,
-                                color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
+                                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .padding(24.dp),
@@ -207,9 +232,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .size(64.dp)
                                     .background(
-                                        brush = Brush.linearGradient(
-                                            colors = listOf(GradientStart, GradientEnd)
-                                        ),
+                                        color = iconColorSolid, // Однотонный цвет вместо градиента
                                         shape = RoundedCornerShape(18.dp)
                                     )
                                     .shadow(

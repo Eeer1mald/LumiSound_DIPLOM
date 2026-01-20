@@ -39,12 +39,16 @@ fun ScreenContent(
                     )
                 )
             }
+            // Оптимизация для 120Hz: используем remember для callback, чтобы не пересоздавать lambda
+            val onTrackClick = remember(navController) {
+                { trackId: String ->
+                    navController.navigate("now_playing/$trackId")
+                }
+            }
             SearchScreen(
                 navController = navController,
                 trendingTracks = mockTracks,
-                onTrackClick = { trackId ->
-                    navController.navigate("now_playing/$trackId")
-                }
+                onTrackClick = onTrackClick
             )
         }
         "ratings" -> {
@@ -67,20 +71,30 @@ fun ScreenContent(
                     )
                 )
             }
+            // Оптимизация для 120Hz: используем remember для callback, чтобы не пересоздавать lambda
+            val onTrackClick = remember(navController) {
+                { trackId: String ->
+                    navController.navigate("now_playing/$trackId")
+                }
+            }
             RatingsScreen(
                 navController = navController,
                 ratedTracks = mockRatedTracks,
-                onTrackClick = { trackId ->
-                    navController.navigate("now_playing/$trackId")
-                }
+                onTrackClick = onTrackClick
             )
         }
         "profile" -> {
+            // Оптимизация для 120Hz: используем remember для callbacks, чтобы не пересоздавать lambda
+            val onRatingsClick = remember(navController) {
+                { navController.navigate("ratings") }
+            }
+            val onSettingsClick = remember(navController) {
+                { navController.navigate("settings") }
+            }
             ProfileScreen(
                 navController = navController,
-                onRatingsClick = {
-                    navController.navigate("ratings")
-                }
+                onRatingsClick = onRatingsClick,
+                onSettingsClick = onSettingsClick
             )
         }
     }

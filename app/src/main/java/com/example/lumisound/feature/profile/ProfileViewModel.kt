@@ -138,6 +138,10 @@ class ProfileViewModel @Inject constructor(
                             )
                         }
                         _uiState.value = _uiState.value.copy(favoriteTracks = favoriteTracks)
+                        android.util.Log.d("ProfileViewModel", "Загружено ${favoriteTracks.size} треков")
+                    }
+                    .onFailure { exception ->
+                        android.util.Log.e("ProfileViewModel", "Ошибка загрузки треков: ${exception.message}")
                     }
             }
         }
@@ -160,6 +164,10 @@ class ProfileViewModel @Inject constructor(
                             )
                         }
                         _uiState.value = _uiState.value.copy(favoriteArtists = favoriteArtists)
+                        android.util.Log.d("ProfileViewModel", "Загружено ${favoriteArtists.size} артистов")
+                    }
+                    .onFailure { exception ->
+                        android.util.Log.e("ProfileViewModel", "Ошибка загрузки артистов: ${exception.message}")
                     }
             }
         }

@@ -150,9 +150,11 @@ fun ProfileSetupScreen(
                                 .fillMaxSize()
                                 .clip(CircleShape)
                                 .background(
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(GradientStart, GradientEnd)
-                                    )
+                                    brush = remember {
+                                        Brush.linearGradient(
+                                            colors = listOf(GradientStart, GradientEnd)
+                                        )
+                                    }
                                 )
                                 .border(
                                     width = 4.dp,

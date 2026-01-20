@@ -96,18 +96,28 @@ fun LoginScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Google Sign-In setup
-    val googleSignInClient = remember {
-        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken("720567253667-nseep0m3eahgo2gpe7dr0uvrnp3k35iu.apps.googleusercontent.com")
-            .requestEmail()
-            .build()
-        GoogleSignIn.getClient(context, gso)
+    // Google Sign-In setup - безопасная инициализация для устройств без Google Services
+    val googleSignInClient: GoogleSignInClient? = remember {
+        try {
+            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken("720567253667-nseep0m3eahgo2gpe7dr0uvrnp3k35iu.apps.googleusercontent.com")
+                .requestEmail()
+                .build()
+            GoogleSignIn.getClient(context, gso)
+        } catch (e: Exception) {
+            // Google Services недоступны (например, на Huawei без GMS)
+            null
+        }
     }
 
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        if (googleSignInClient == null) {
+            // Google Sign-In недоступен на этом устройстве
+            return@rememberLauncherForActivityResult
+        }
+        
         coroutineScope.launch {
             try {
                 val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
@@ -120,6 +130,9 @@ fun LoginScreen(
                 }
             } catch (e: ApiException) {
                 snackbarHostState.showSnackbar("Ошибка входа через Google: ${e.message ?: "Неизвестная ошибка"}")
+            } catch (e: Exception) {
+                // Обработка других исключений (например, когда Google Services недоступны)
+                snackbarHostState.showSnackbar("Google Sign-In недоступен на этом устройстве")
             }
         }
     }
@@ -146,13 +159,15 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        ColorBackground,
-                        Color(0xFF0A0B1A),
-                        ColorBackground
+                brush = remember {
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            ColorBackground,
+                            Color(0xFF0A0B1A),
+                            ColorBackground
+                        )
                     )
-                )
+                }
             ),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Color.Transparent,

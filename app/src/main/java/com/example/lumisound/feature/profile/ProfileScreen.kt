@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,7 +41,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -70,6 +71,7 @@ import com.example.lumisound.ui.theme.ColorAccentSecondary
 import com.example.lumisound.ui.theme.ColorBackground
 import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.ColorSecondary
+import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
 
@@ -78,6 +80,7 @@ import com.example.lumisound.ui.theme.GradientStart
 fun ProfileScreen(
     navController: NavHostController,
     onRatingsClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -87,6 +90,10 @@ fun ProfileScreen(
     val username = remember(uiState.username) { uiState.username.ifEmpty { "Пользователь" } }
     val bio = remember(uiState.bio) { uiState.bio }
     val hasBio = remember(bio) { bio != null }
+    
+    // Оптимизация: запоминаем списки для уменьшения recompositions
+    val favoriteTracks = remember(uiState.favoriteTracks) { uiState.favoriteTracks }
+    val favoriteArtists = remember(uiState.favoriteArtists) { uiState.favoriteArtists }
     
     var showEditUsernameDialog by remember { mutableStateOf(false) }
     var showEditBioDialog by remember { mutableStateOf(false) }
@@ -120,15 +127,8 @@ fun ProfileScreen(
         }
     }
     
-    // Данные из ViewModel
-    val favoriteTracks = uiState.favoriteTracks
-    val favoriteArtists = uiState.favoriteArtists
-    
-    // Обновляем данные при возврате на экран профиля
-    LaunchedEffect(Unit) {
-        viewModel.loadFavoriteTracks()
-        viewModel.loadFavoriteArtists()
-    }
+    // Данные загружаются только при инициализации ViewModel (в init блоке)
+    // Не обновляем при каждом переходе на экран
     
     val avatarImageRequest = remember(avatarUri, uiState.avatarUrl) {
         // Приоритет: локальный avatarUri (только что обрезанный), затем avatarUrl из БД
@@ -136,7 +136,7 @@ fun ProfileScreen(
         imageUri?.let { uri ->
             ImageRequest.Builder(context)
                 .data(uri)
-                .crossfade(true)
+                .crossfade(false) // Отключаем crossfade для лучшей производительности
                 .placeholder(android.R.drawable.ic_menu_gallery) // Placeholder пока загружается
                 .error(android.R.drawable.ic_menu_report_image) // Иконка при ошибке
                 .build()
@@ -149,23 +149,23 @@ fun ProfileScreen(
             .background(ColorBackground)
             .statusBarsPadding()
     ) {
+        // Используем remember для scrollState чтобы избежать пересоздания при recomposition
+        // Оптимизация для 120Hz: graphicsLayer для кеширования скролла
+        val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .graphicsLayer {
+                    // Кешируем графический слой для ускорения скролла на 120Hz
+                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+                }
+                .verticalScroll(scrollState)
         ) {
-            // Header with Gradient
+            // Header with dark background - используем remember для оптимизации
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFF1A1B2E),
-                                ColorBackground
-                            )
-                        )
-                    )
+                    .background(ColorBackground)
                     .padding(horizontal = 16.dp, vertical = 24.dp)
             ) {
                 Column(
@@ -176,15 +176,12 @@ fun ProfileScreen(
                     Box(
                         modifier = Modifier.size(120.dp)
                     ) {
+                        // Заменён градиент на однотонный цвет
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(GradientStart, GradientEnd)
-                                    )
-                                )
+                                .background(color = GradientStart) // Однотонный акцентный цвет
                                 .shadow(
                                     elevation = 8.dp,
                                     shape = RoundedCornerShape(16.dp)
@@ -237,15 +234,13 @@ fun ProfileScreen(
                             }
                         }
                         
-                        // Camera icon button
+                        // Camera icon button - заменён градиент на однотонный цвет
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .size(40.dp)
                                 .background(
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(GradientStart, GradientEnd)
-                                    ),
+                                    color = GradientStart, // Однотонный акцентный цвет
                                     shape = CircleShape
                                 )
                                 .border(
@@ -267,99 +262,63 @@ fun ProfileScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Username with edit button
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                    // Username - кликабельный для редактирования
+                    Text(
+                        text = username,
+                        color = ColorOnBackground,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable {
+                            editedUsername = uiState.username
+                            showEditUsernameDialog = true
+                        }
+                    )
+
+                    // Bio - серый квадратик со скругленными краями
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(
+                                width = 1.dp,
+                                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable {
+                                editedBio = bio ?: ""
+                                showEditBioDialog = true
+                            }
+                            .padding(16.dp)
                     ) {
                         Text(
-                            text = username,
-                            color = ColorOnBackground,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        IconButton(
-                            onClick = {
-                                editedUsername = uiState.username
-                                showEditUsernameDialog = true
-                            },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit username",
-                                tint = ColorSecondary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-
-                    // Bio with edit button
-                    if (hasBio || showEditBioDialog) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(top = 8.dp)
-                        ) {
-                            Text(
-                                text = bio ?: "О себе",
-                                color = ColorSecondary,
-                                fontSize = 14.sp,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            )
-                            IconButton(
-                                onClick = {
-                                    editedBio = bio ?: ""
-                                    showEditBioDialog = true
-                                },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = "Edit bio",
-                                    tint = ColorSecondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    } else {
-                        Text(
-                            text = "О себе",
-                            color = ColorSecondary,
+                            text = bio ?: "О себе",
+                            color = if (bio != null) ColorOnBackground else ColorSecondary,
                             fontSize = 14.sp,
-                            modifier = Modifier
-                                .padding(top = 8.dp)
-                                .clickable {
-                                    editedBio = ""
-                                    showEditBioDialog = true
-                                }
+                            style = if (bio == null) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
                 
                 // Settings icon in top right
                 IconButton(
-                    onClick = { /* TODO: Navigate to settings */ },
+                    onClick = onSettingsClick,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .size(40.dp)
                 ) {
+                    // Заменён градиент на однотонный цвет
                     Box(
                         modifier = Modifier
                             .size(40.dp)
                             .background(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(
-                                        Color(0xFF1A1B2E).copy(alpha = 0.8f),
-                                        Color(0xFF16182A).copy(alpha = 0.8f)
-                                    )
-                                ),
+                                color = ColorSurface.copy(alpha = 0.8f), // Тёмно-серый вместо градиента
                                 shape = CircleShape
                             )
                             .border(
                                 width = 1.dp,
-                                color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
+                                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
                                 shape = CircleShape
                             ),
                         contentAlignment = Alignment.Center
@@ -409,7 +368,7 @@ fun ProfileScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Топ-10 самых прослушиваемых треков",
+                        text = "Любимые треки сейчас",
                         color = ColorOnBackground,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
@@ -419,11 +378,13 @@ fun ProfileScreen(
                 if (favoriteTracks.isNotEmpty()) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 0.dp)
                     ) {
                         items(
                             items = favoriteTracks,
-                            key = { it.id }
+                            key = { it.id },
+                            contentType = { "track_card" } // Оптимизация для LazyRow
                         ) { track ->
                             FavoriteTrackCard(
                                 track = track,
@@ -453,7 +414,7 @@ fun ProfileScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Топ-10 самых прослушиваемых артистов",
+                        text = "Любимые исполнители сейчас",
                         color = ColorOnBackground,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
@@ -463,11 +424,13 @@ fun ProfileScreen(
                 if (favoriteArtists.isNotEmpty()) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 0.dp)
                     ) {
                         items(
                             items = favoriteArtists,
-                            key = { it.id }
+                            key = { it.id },
+                            contentType = { "artist_card" } // Оптимизация для LazyRow
                         ) { artist ->
                             FavoriteArtistCard(
                                 artist = artist,
@@ -485,22 +448,7 @@ fun ProfileScreen(
                 }
             }
 
-            // Menu Items
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .padding(bottom = 80.dp)
-            ) {
-                MenuItemCard(
-                    icon = Icons.Default.Star,
-                    label = "Мои оценки",
-                    subtitle = "12 треков оценено",
-                    gradient = Pair(GradientStart, GradientEnd),
-                    onClick = onRatingsClick,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
+            // Menu Items - убрана строка "Мои оценки"
         }
     }
     
@@ -579,20 +527,22 @@ private fun StatBox(
     iconColor: Color,
     modifier: Modifier = Modifier
 ) {
+    // Заменены градиенты на однотонные цвета
+    val statBoxColor = remember {
+        ColorSurface.copy(alpha = 0.6f) // Тёмно-серый вместо градиента
+    }
+    val iconColorSolid = remember {
+        GradientStart.copy(alpha = 0.2f) // Однотонный акцентный цвет
+    }
     Column(
         modifier = modifier
             .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF1A1B2E).copy(alpha = 0.6f),
-                        Color(0xFF16182A).copy(alpha = 0.6f)
-                    )
-                ),
+                color = statBoxColor,
                 shape = RoundedCornerShape(12.dp)
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
+                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
                 shape = RoundedCornerShape(12.dp)
             )
             .padding(12.dp),
@@ -602,12 +552,7 @@ private fun StatBox(
             modifier = Modifier
                 .size(32.dp)
                 .background(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            GradientStart.copy(alpha = 0.2f),
-                            GradientEnd.copy(alpha = 0.2f)
-                        )
-                    ),
+                    color = iconColorSolid,
                     shape = RoundedCornerShape(8.dp)
                 ),
             contentAlignment = Alignment.Center
@@ -643,29 +588,26 @@ private fun FavoriteTrackCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Заменён градиент на однотонный цвет
+    val trackCardColor = remember {
+        ColorSurface // Тёмно-серый вместо градиента
+    }
     Column(
         modifier = modifier
-            .width(140.dp)
+            .width(104.dp)
             .clickable(onClick = onClick),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Box(
             modifier = Modifier
-                .width(140.dp)
-                .height(140.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFF1A1B2E),
-                            Color(0xFF16182A)
-                        )
-                    )
-                )
+                .width(104.dp)
+                .height(104.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(color = trackCardColor) // Однотонный цвет вместо градиента
                 .border(
                     width = 1.dp,
-                    color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(18.dp)
+                    color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
+                    shape = RoundedCornerShape(13.dp)
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -678,7 +620,7 @@ private fun FavoriteTrackCard(
                     contentDescription = track.title,
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(18.dp)),
+                        .clip(RoundedCornerShape(13.dp)),
                     contentScale = ContentScale.Crop,
                     loading = {
                         Icon(
@@ -712,7 +654,7 @@ private fun FavoriteTrackCard(
         Text(
             text = track.title,
             color = ColorOnBackground,
-            fontSize = 14.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -720,7 +662,7 @@ private fun FavoriteTrackCard(
         Text(
             text = track.artist,
             color = ColorSecondary,
-            fontSize = 12.sp,
+            fontSize = 10.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -733,28 +675,25 @@ private fun FavoriteArtistCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Заменён градиент на однотонный цвет
+    val artistCardColor = remember {
+        ColorSurface // Тёмно-серый вместо градиента
+    }
     Column(
         modifier = modifier
-            .width(120.dp)
+            .width(89.dp)
             .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(120.dp)
+                .size(89.dp)
                 .clip(CircleShape)
-                .background(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFF1A1B2E),
-                            Color(0xFF16182A)
-                        )
-                    )
-                )
+                .background(color = artistCardColor) // Однотонный цвет вместо градиента
                 .border(
                     width = 1.dp,
-                    color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
+                    color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
                     shape = CircleShape
                 ),
             contentAlignment = Alignment.Center
@@ -802,7 +741,7 @@ private fun FavoriteArtistCard(
         Text(
             text = artist.name,
             color = ColorOnBackground,
-            fontSize = 14.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -819,21 +758,24 @@ private fun MenuItemCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Заменены градиенты на однотонные цвета
+    val menuCardColor = remember {
+        ColorSurface.copy(alpha = 0.8f) // Тёмно-серый вместо градиента
+    }
+    val iconColorSolid = remember(gradient) {
+        // Используем первый цвет градиента или средний акцентный цвет
+        GradientStart.copy(alpha = 0.5f) // Однотонный акцентный цвет
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
             .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF1A1B2E).copy(alpha = 0.8f),
-                        Color(0xFF16182A).copy(alpha = 0.8f)
-                    )
-                ),
+                color = menuCardColor, // Однотонный цвет вместо градиента
                 shape = RoundedCornerShape(12.dp)
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
+                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
                 shape = RoundedCornerShape(12.dp)
             )
             .clickable(onClick = onClick)
@@ -848,9 +790,7 @@ private fun MenuItemCard(
                 modifier = Modifier
                     .size(48.dp)
                     .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(gradient.first, gradient.second)
-                        ),
+                        color = iconColorSolid, // Однотонный цвет вместо градиента
                         shape = RoundedCornerShape(12.dp)
                     )
                     .shadow(

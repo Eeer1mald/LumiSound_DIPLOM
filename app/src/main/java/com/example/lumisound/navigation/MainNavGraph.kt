@@ -27,6 +27,7 @@ import com.example.lumisound.data.model.Track
 import com.example.lumisound.data.player.PlayerStateHolder
 import com.example.lumisound.feature.home.HomeScreen
 import com.example.lumisound.feature.nowplaying.NowPlayingScreen
+import com.example.lumisound.feature.nowplaying.TestPlayerScreen
 import com.example.lumisound.feature.search.PlayerStateHolderEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import com.example.lumisound.feature.profile.ProfileScreen
@@ -34,6 +35,7 @@ import com.example.lumisound.feature.ratings.RatedTrack
 import com.example.lumisound.feature.ratings.RatingsScreen
 import com.example.lumisound.feature.search.SearchScreen
 import com.example.lumisound.feature.artist.ArtistCardScreen
+import com.example.lumisound.feature.settings.SettingsScreen
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -45,6 +47,7 @@ sealed class MainDestination(val route: String) {
     data object Search : MainDestination("search")
     data object Ratings : MainDestination("ratings")
     data object Profile : MainDestination("profile")
+    data object Settings : MainDestination("settings")
     data class NowPlaying(val trackId: String = "{trackId}") : MainDestination("now_playing/{trackId}") {
         fun createRoute(trackId: String) = "now_playing/$trackId"
     }
@@ -163,10 +166,64 @@ fun MainNavGraph(
         composable(
             route = MainDestination.NowPlaying().route,
             arguments = listOf(navArgument("trackId") { type = NavType.StringType }),
-            enterTransition = { fadeIn(animationSpec = tween(150)) },
-            exitTransition = { fadeOut(animationSpec = tween(150)) }
+            // Убираем анимации переходов, чтобы страница не обновлялась и не мигала
+            enterTransition = { androidx.compose.animation.EnterTransition.None },
+            exitTransition = { androidx.compose.animation.ExitTransition.None }
         ) { backStackEntry ->
+            // ТЕСТОВАЯ СТРАНИЦА - простая страница с фоном для проверки status bar
+            val currentTrack by playerStateHolder.currentTrack.collectAsState()
+            val track = currentTrack
+            
+            // Получаем предыдущий маршрут для правильного возврата
+            // Используем previousBackStackEntry - это правильный предыдущий маршрут в Navigation Compose
+            val previousRoute = remember(backStackEntry) {
+                navController.previousBackStackEntry?.destination?.route
+                    ?.takeIf { it in listOf("home", "search", "ratings", "profile") }
+                    ?: "home"
+            }
+            
+            if (track != null) {
+                TestPlayerScreen(
+                    track = track,
+                    onClose = { 
+                        // Используем popBackStack для правильного возврата
+                        val result = navController.popBackStack()
+                        if (!result) {
+                            // Если popBackStack вернул false, навигируем на сохранённый маршрут
+                            navController.navigate(previousRoute) {
+                                popUpTo("now_playing") { inclusive = true }
+                            }
+                        }
+                    }
+                )
+            } else {
+                val trackId = backStackEntry.arguments?.getString("trackId") ?: "1"
+                val mockTrack = mockTracks.find { it.id == trackId } ?: mockTracks[0]
+                TestPlayerScreen(
+                    track = Track(
+                        id = mockTrack.id,
+                        name = mockTrack.title,
+                        artist = mockTrack.artist,
+                        imageUrl = mockTrack.coverUrl,
+                        previewUrl = null,
+                        genre = null
+                    ),
+                    onClose = { 
+                        // Используем popBackStack для правильного возврата
+                        val result = navController.popBackStack()
+                        if (!result) {
+                            // Если popBackStack вернул false, навигируем на сохранённый маршрут
+                            navController.navigate(previousRoute) {
+                                popUpTo("now_playing") { inclusive = true }
+                            }
+                        }
+                    }
+                )
+            }
+            
+            // ЗАКОММЕНТИРОВАНО ДЛЯ ТЕСТИРОВАНИЯ
             // Получаем трек из PlayerStateHolder
+            /*
             val currentTrack by playerStateHolder.currentTrack.collectAsState()
             val track = currentTrack
             if (track != null) {
@@ -199,6 +256,7 @@ fun MainNavGraph(
                     }
                 )
             }
+            */
         }
         
         composable(
@@ -222,6 +280,16 @@ fun MainNavGraph(
                 artistName = artistName,
                 artistImageUrl = artistImageUrl,
                 onClose = { navController.popBackStack() }
+            )
+        }
+        
+        composable(
+            route = MainDestination.Settings.route,
+            enterTransition = { fadeIn(animationSpec = tween(200)) },
+            exitTransition = { fadeOut(animationSpec = tween(200)) }
+        ) {
+            SettingsScreen(
+                onBack = { navController.popBackStack() }
             )
         }
     }

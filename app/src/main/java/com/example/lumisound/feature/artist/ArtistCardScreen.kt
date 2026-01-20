@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,10 +60,12 @@ fun ArtistCardScreen(
             .background(ColorBackground)
             .statusBarsPadding()
     ) {
+        // Оптимизация scrollState
+        val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
         ) {
             // Header
             Row(
@@ -97,15 +100,12 @@ fun ArtistCardScreen(
                     .padding(horizontal = 32.dp, vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
+                // Заменён градиент на однотонный цвет
                 Box(
                     modifier = Modifier
                         .size(280.dp)
                         .clip(RoundedCornerShape(24.dp))
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(GradientStart, GradientEnd)
-                            )
-                        )
+                        .background(color = GradientStart) // Однотонный акцентный цвет
                         .shadow(
                             elevation = 16.dp,
                             shape = RoundedCornerShape(24.dp),
@@ -122,7 +122,7 @@ fun ArtistCardScreen(
                         SubcomposeAsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
                                 .data(artistImageUrl)
-                                .crossfade(true)
+                                .crossfade(false) // Отключено для лучшей производительности
                                 .build(),
                             contentDescription = artistName,
                             modifier = Modifier
