@@ -34,16 +34,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lumisound.data.model.Track
@@ -68,43 +67,50 @@ fun MiniPlayer(
     onAnimationProgressChange: (Float) -> Unit = {},
     onDragStart: () -> Unit = {},
     onDragEnd: () -> Unit = {},
+    onDragVelocityChange: (Float) -> Unit = {}, // Передаем скорость для инерции
     modifier: Modifier = Modifier
 ) {
     if (currentTrack == null) {
         return
     }
 
+    // Получаем высоту экрана и density (используем и для прогресса, и для смещения)
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
-    
-    // Вычисляем масштаб и позицию на основе прогресса анимации
-    // Используем нелинейную функцию для более плавной анимации
-    val easedProgress = remember(animationProgress) {
-        // Ease-out функция для более естественной анимации
-        val t = animationProgress.coerceIn(0f, 1f)
-        1f - (1f - t) * (1f - t)
-    }
-    
-    val scale = remember(easedProgress) {
-        // Масштаб от 1.0 до ~2.5 (мини-плеер увеличивается)
-        1f + (easedProgress * 1.5f).coerceIn(0f, 1.5f)
-    }
-    
+
+    // Анимация прозрачности: мини-плеер становится прозрачнее при свайпе вверх
     val alpha = remember(animationProgress) {
-        // Прозрачность быстро уменьшается при анимации (мини-плеер исчезает)
-        // Начинаем скрывать после 20% прогресса
-        if (animationProgress < 0.2f) {
-            1f
-        } else {
-            (1f - ((animationProgress - 0.2f) / 0.8f)).coerceIn(0f, 1f)
+        // Полностью видим в начале, исчезает к моменту полного открытия плеера
+        (1f - animationProgress.coerceIn(0f, 1f)).coerceIn(0f, 1f)
+    }
+
+    // Высота самого мини-плеера + вертикальные отступы
+    val miniPlayerTotalHeightPx = remember(density) {
+        with(density) {
+            // 72.dp высота + 16.dp вертикальные паддинги (8dp сверху и снизу)
+            (72.dp + 16.dp).toPx()
         }
     }
-    
-    // Вычисляем смещение вверх на основе прогресса
-    val offsetY = remember(animationProgress, screenHeightPx) {
-        // Смещаем мини-плеер вверх при анимации
-        -easedProgress * screenHeightPx * 0.25f
+
+    // Для синхронного движения с полноэкранным плеером используем ту же «длину пути»,
+    // что и у верхней границы PlayerScreen (см. SwipeableNavHost).
+    // Там путь ≈ screenHeight - (miniPlayer + padding + bottom bar).
+    val miniPlayerTravelPx = remember(configuration, density, miniPlayerTotalHeightPx) {
+        with(density) {
+            val screenHeightPx = configuration.screenHeightDp.dp.toPx()
+            val bottomBarHeightPx = 56.dp.toPx() // приближённая высота нижней навигации
+            (screenHeightPx - miniPlayerTotalHeightPx - bottomBarHeightPx).coerceAtLeast(0f)
+        }
+    }
+
+    // Смещение мини‑плеера вверх вместе с жестом:
+    // при progress = 0 он на своём месте внизу,
+    // при progress = 1 — поднят на ту же высоту, что и лист плеера.
+    // Так мини‑плеер визуально двигается с той же скоростью, что и плеер.
+    val miniPlayerOffsetY = remember(animationProgress, miniPlayerTravelPx) {
+        val t = animationProgress.coerceIn(0f, 1f)
+        // От 0 до -miniPlayerTravelPx (двигаем вверх)
+        -(miniPlayerTravelPx * t)
     }
 
     Box(
@@ -112,11 +118,12 @@ fun MiniPlayer(
             .fillMaxWidth()
             .height(72.dp)
             .padding(horizontal = 12.dp, vertical = 8.dp)
-            .scale(scale)
+            // Двигаем мини‑плеер вверх вместе с жестом и одновременно плавно скрываем
+            .offset(y = with(density) { miniPlayerOffsetY.toDp() })
             .alpha(alpha)
-            .offset(y = with(density) { offsetY.toDp() })
             .background(
-                color = ColorSurface, // Тёмно-серый вместо 0xFF343639
+                // Немного прозрачный фон: 80% непрозрачности (20% прозрачности)
+                color = ColorSurface.copy(alpha = 0.8f),
                 shape = RoundedCornerShape(20.dp)
             )
             .border(
@@ -131,22 +138,51 @@ fun MiniPlayer(
             )
             .pointerInput(Unit) {
                 var totalDrag = 0f
-                var startY = 0f
+                var velocity = 0f
+                var lastDragTime = 0L
+                val velocityDecay = 0.92f // Коэффициент затухания скорости для инерции
                 
                 detectVerticalDragGestures(
                     onDragStart = { offset ->
-                        startY = offset.y
+                        totalDrag = 0f
+                        velocity = 0f
                         onDragStart()
                     },
                     onDragEnd = {
+                        // Просто вызываем callback - инерцию обрабатываем в родительском компоненте
                         onDragEnd()
                         totalDrag = 0f
+                        velocity = 0f
                     },
                     onVerticalDrag = { change, dragAmount ->
+                        val currentTime = System.currentTimeMillis()
+                        val deltaTime = if (lastDragTime > 0) (currentTime - lastDragTime).coerceAtLeast(1) else 16
+                        lastDragTime = currentTime
+                        
                         if (dragAmount < 0) { // Свайп вверх (отрицательное значение)
                             totalDrag += abs(dragAmount)
-                            // Вычисляем прогресс на основе свайпа (максимум 300px для полного открытия)
-                            val newProgress = (totalDrag / 300f).coerceIn(0f, 1f)
+                            // Вычисляем скорость для инерции (пиксели в миллисекунду)
+                            // Более точный расчет: реальная скорость движения
+                            val dragPixels = abs(dragAmount)
+                            val timeMs = deltaTime.toFloat().coerceAtLeast(1f)
+                            // Скорость в пикселях за миллисекунду (более точная)
+                            velocity = dragPixels / timeMs
+                            onDragVelocityChange(velocity) // Передаем скорость родителю
+                            
+                            // Вычисляем прогресс на основе свайпа
+                            // Используем высоту экрана для движения 1:1 с пальцем
+                            // Для полного открытия нужно свайпнуть на всю высоту экрана
+                            val screenHeight = with(density) { configuration.screenHeightDp.dp.toPx() }
+                            val newProgress = (totalDrag / screenHeight).coerceIn(0f, 1f)
+                            onAnimationProgressChange(newProgress)
+                            change.consume()
+                        } else if (dragAmount > 0 && totalDrag > 0) {
+                            // Разрешаем возврат вниз (если уже начали свайп вверх)
+                            totalDrag = (totalDrag - abs(dragAmount)).coerceAtLeast(0f)
+                            velocity = 0f // Сбрасываем скорость при возврате
+                            onDragVelocityChange(0f)
+                            val screenHeight = with(density) { configuration.screenHeightDp.dp.toPx() }
+                            val newProgress = (totalDrag / screenHeight).coerceIn(0f, 1f)
                             onAnimationProgressChange(newProgress)
                             change.consume()
                         }
@@ -154,6 +190,7 @@ fun MiniPlayer(
                 )
             }
             .clickable { 
+                // Клик работает только если не происходит анимация и не идет свайп
                 if (animationProgress == 0f) {
                     onTrackClick()
                 }

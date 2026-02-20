@@ -1,6 +1,7 @@
 package com.example.lumisound.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.navigation.NavHostController
 import com.example.lumisound.feature.home.HomeScreen
@@ -17,11 +18,13 @@ fun ScreenContent(
     userName: String
 ) {
     when (route) {
-        "home" -> HomeScreen(
-            navController = navController,
-            userName = userName
-        )
-        "search" -> {
+        "home" -> key(route) {
+            HomeScreen(
+                navController = navController,
+                userName = userName
+            )
+        }
+        "search" -> key(route) {
             // Используем remember для mock данных, чтобы не создавать их при каждой рекомпозиции
             val mockTracks = remember {
                 listOf(
@@ -51,7 +54,7 @@ fun ScreenContent(
                 onTrackClick = onTrackClick
             )
         }
-        "ratings" -> {
+        "ratings" -> key(route) {
             // Используем remember для mock данных
             val mockRatedTracks = remember {
                 listOf(
@@ -83,7 +86,7 @@ fun ScreenContent(
                 onTrackClick = onTrackClick
             )
         }
-        "profile" -> {
+        "profile" -> key(route) {
             // Оптимизация для 120Hz: используем remember для callbacks, чтобы не пересоздавать lambda
             val onRatingsClick = remember(navController) {
                 { navController.navigate("ratings") }

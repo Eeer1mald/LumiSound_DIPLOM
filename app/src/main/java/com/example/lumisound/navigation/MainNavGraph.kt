@@ -10,11 +10,16 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.example.lumisound.ui.theme.ColorBackground
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -23,11 +28,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.NavOptionsBuilder
 import com.example.lumisound.data.model.Track
 import com.example.lumisound.data.player.PlayerStateHolder
 import com.example.lumisound.feature.home.HomeScreen
 import com.example.lumisound.feature.nowplaying.NowPlayingScreen
-import com.example.lumisound.feature.nowplaying.TestPlayerScreen
+import com.example.lumisound.feature.nowplaying.PlayerScreen
 import com.example.lumisound.feature.search.PlayerStateHolderEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import com.example.lumisound.feature.profile.ProfileScreen
@@ -130,10 +136,17 @@ fun MainNavGraph(
         )
     )
 
-    NavHost(
-        navController = navController,
-        startDestination = startDestination
+    // Оборачиваем NavHost в Box с черным фоном, чтобы убрать белое мерцание
+    // когда плеер становится прозрачным при закрытии
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ColorBackground)
     ) {
+        NavHost(
+            navController = navController,
+            startDestination = startDestination
+        ) {
         // Основные вкладки с swipe navigation и mini player
         addTabDestination(
             route = MainDestination.Home.route,
@@ -166,30 +179,56 @@ fun MainNavGraph(
         composable(
             route = MainDestination.NowPlaying().route,
             arguments = listOf(navArgument("trackId") { type = NavType.StringType }),
-            // Убираем анимации переходов, чтобы страница не обновлялась и не мигала
+            // Убираем анимации переходов, чтобы страница не обновлялась при возврате
+            // Это гарантирует, что предыдущая страница сохранит свое состояние
             enterTransition = { androidx.compose.animation.EnterTransition.None },
-            exitTransition = { androidx.compose.animation.ExitTransition.None }
+            exitTransition = { androidx.compose.animation.ExitTransition.None },
+            popEnterTransition = { androidx.compose.animation.EnterTransition.None },
+            popExitTransition = { androidx.compose.animation.ExitTransition.None }
         ) { backStackEntry ->
             // ТЕСТОВАЯ СТРАНИЦА - простая страница с фоном для проверки status bar
             val currentTrack by playerStateHolder.currentTrack.collectAsState()
             val track = currentTrack
             
-            // Получаем предыдущий маршрут для правильного возврата
-            // Используем previousBackStackEntry - это правильный предыдущий маршрут в Navigation Compose
+            // Получаем маршрут экрана, С КОТОРОГО открыли плеер.
+            // Мы сохраняем playerSourceRoute в currentBackStackEntry.savedStateHandle ДО навигации,
+            // поэтому после навигации это значение будет в previousBackStackEntry.savedStateHandle
             val previousRoute = remember(backStackEntry) {
-                navController.previousBackStackEntry?.destination?.route
+                // Сначала пробуем взять из savedStateHandle предыдущего entry (где мы были до навигации)
+                navController.previousBackStackEntry
+                    ?.savedStateHandle
+                    ?.get<String>("playerSourceRoute")
                     ?.takeIf { it in listOf("home", "search", "ratings", "profile") }
-                    ?: "home"
+                    // Если нет, пробуем из текущего entry (на случай, если сохранили после навигации)
+                    ?: backStackEntry.savedStateHandle
+                        .get<String>("playerSourceRoute")
+                        ?.takeIf { it in listOf("home", "search", "ratings", "profile") }
+                    // Фоллбек: маршрут самой предыдущей destination или home.
+                    ?: navController.previousBackStackEntry?.destination?.route
+                        ?.takeIf { it in listOf("home", "search", "ratings", "profile") }
+                        ?: "home"
             }
             
             if (track != null) {
-                TestPlayerScreen(
+                PlayerScreen(
                     track = track,
+                    previousRoute = previousRoute,
+                    navController = navController,
+                    userName = userName,
                     onClose = { 
-                        // Используем popBackStack для правильного возврата
-                        val result = navController.popBackStack()
-                        if (!result) {
-                            // Если popBackStack вернул false, навигируем на сохранённый маршрут
+                        // КРИТИЧНО: сразу вызываем popBackStack при закрытии
+                        // Это гарантирует немедленный выход с экрана плеера
+                        // Трек в PlayerStateHolder НЕ очищается - мини-плеер останется видимым
+                        try {
+                            val result = navController.popBackStack()
+                            if (!result) {
+                                // Если popBackStack вернул false, навигируем на сохранённый маршрут
+                                navController.navigate(previousRoute) {
+                                    popUpTo("now_playing") { inclusive = true }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // Fallback: навигируем на предыдущий маршрут напрямую
                             navController.navigate(previousRoute) {
                                 popUpTo("now_playing") { inclusive = true }
                             }
@@ -199,7 +238,7 @@ fun MainNavGraph(
             } else {
                 val trackId = backStackEntry.arguments?.getString("trackId") ?: "1"
                 val mockTrack = mockTracks.find { it.id == trackId } ?: mockTracks[0]
-                TestPlayerScreen(
+                PlayerScreen(
                     track = Track(
                         id = mockTrack.id,
                         name = mockTrack.title,
@@ -208,11 +247,23 @@ fun MainNavGraph(
                         previewUrl = null,
                         genre = null
                     ),
+                    previousRoute = previousRoute,
+                    navController = navController,
+                    userName = userName,
                     onClose = { 
-                        // Используем popBackStack для правильного возврата
-                        val result = navController.popBackStack()
-                        if (!result) {
-                            // Если popBackStack вернул false, навигируем на сохранённый маршрут
+                        // КРИТИЧНО: сразу вызываем popBackStack при закрытии
+                        // Это гарантирует немедленный выход с экрана плеера
+                        // Трек в PlayerStateHolder НЕ очищается - мини-плеер останется видимым
+                        try {
+                            val result = navController.popBackStack()
+                            if (!result) {
+                                // Если popBackStack вернул false, навигируем на сохранённый маршрут
+                                navController.navigate(previousRoute) {
+                                    popUpTo("now_playing") { inclusive = true }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // Fallback: навигируем на предыдущий маршрут напрямую
                             navController.navigate(previousRoute) {
                                 popUpTo("now_playing") { inclusive = true }
                             }
@@ -293,6 +344,7 @@ fun MainNavGraph(
             )
         }
     }
+    }
 }
 
 /**
@@ -308,6 +360,8 @@ private fun NavGraphBuilder.addTabDestination(
         route = route
         // Убираем анимации - HorizontalPager сам обеспечивает плавный свайп
         // Не указываем enterTransition и exitTransition, чтобы избежать конфликта с HorizontalPager
+        // Navigation Compose автоматически сохраняет состояние экранов в back stack
+        // ViewModel сохраняются через hiltViewModel() и не пересоздаются при возврате
     ) {
         SwipeableNavHost(
             navController = navController,

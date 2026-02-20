@@ -2,11 +2,10 @@ package com.example.lumisound.feature.nowplaying
 
 import android.app.Activity
 import androidx.compose.foundation.background
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,13 +20,13 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MusicNote
@@ -43,15 +42,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -61,11 +61,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -81,81 +82,16 @@ import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
 
 @Composable
-fun TestPlayerScreen(
+fun PlayerScreen(
     track: Track,
     onClose: () -> Unit = {},
+    previousRoute: String? = null, // Маршрут предыдущего экрана для показа под плеером
+    navController: androidx.navigation.NavHostController? = null, // Для отображения предыдущего экрана
+    userName: String = "Александр", // Для отображения предыдущего экрана
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val view = LocalView.current
     val context = LocalContext.current
-    val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
-    
-    // Состояние для анимации при нажатии на кнопку закрытия
-    var isClosing by remember { mutableStateOf(false) }
-    
-    // Используем Animatable для ручного управления анимацией закрытия
-    val closeAnimation = remember { Animatable(1f) }
-    
-    // Флаг для предотвращения повторного вызова onClose
-    var hasCalledOnClose by remember { mutableStateOf(false) }
-    
-    // Запускаем анимацию при нажатии на кнопку - только один раз
-    LaunchedEffect(isClosing) {
-        if (isClosing && !hasCalledOnClose) {
-            // Сразу вызываем onClose только один раз, чтобы страница поиска появилась под анимацией
-            hasCalledOnClose = true
-            onClose()
-            
-            // Плавная анимация от полного плеера (1f) к мини-плееру (0f)
-            closeAnimation.snapTo(1f)
-            closeAnimation.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(
-                    durationMillis = 400,
-                    easing = FastOutSlowInEasing
-                )
-            )
-        }
-    }
-    
-    // Сбрасываем флаги при открытии плеера заново (когда isClosing становится false)
-    LaunchedEffect(isClosing) {
-        if (!isClosing) {
-            hasCalledOnClose = false
-            closeAnimation.snapTo(1f)
-        }
-    }
-    
-    // Оптимизация: используем derivedStateOf правильно - создаем один раз в remember
-    val currentProgress = remember {
-        androidx.compose.runtime.derivedStateOf {
-            if (isClosing) closeAnimation.value else 1f
-        }
-    }.value
-    
-    // Если анимация закрытия завершена, не рендерим экран (предотвращает мигание)
-    // Используем более строгое условие - только если точно закрываемся и прогресс минимален
-    if (isClosing && hasCalledOnClose && currentProgress <= 0.01f) {
-        return
-    }
-    
-    // Оптимизация: вычисляем все анимационные значения в одном блоке remember для минимизации рекомпозиций
-    // Зависимости: currentProgress меняется на каждом кадре анимации, остальные - константы
-    val screenWidthPx = remember(density, configuration) { 
-        with(density) { configuration.screenWidthDp.dp.toPx() } 
-    }
-    val startY = remember(screenHeightPx) { screenHeightPx * 0.85f }
-    
-    // Вычисляем все значения анимации в одном remember - минимизируем рекомпозиции
-    val t = remember(currentProgress) { currentProgress.coerceIn(0f, 1f) }
-    val easedProgress = remember(t) { 1f - (1f - t) * (1f - t) }
-    val minScale = 0.25f
-    val scale = remember(easedProgress) { minScale + (easedProgress * (1f - minScale)) }
-    val baseY = remember(easedProgress, startY) { startY * (1f - easedProgress) }
-    val playerAlpha = remember(t) { if (t < 0.1f) t / 0.1f else 1f }
-    val offsetX = remember(scale, screenWidthPx) { (screenWidthPx * (1f - scale) / 2f) }
     
     // Минимальные настройки status bar
     SideEffect {
@@ -182,49 +118,85 @@ fun TestPlayerScreen(
         viewModel.syncPlayerState()
     }
     
-    // Фон сразу прозрачный при нажатии, чтобы сразу была видна страница поиска
-    val backgroundColor = remember(isClosing) {
-        if (isClosing) Color.Transparent else ColorBackground
-    }
-    
     // Заменён градиент на однотонный фон - используем ColorSurface для небольшого контраста
     val backgroundSolidColor: Color = remember {
         ColorSurface // #121212 - темно-серый для фона
     }
-    val scrollState = rememberScrollState()
-    
+
+
+    // --- Состояние и параметры для анимации закрытия свайпом вниз ---
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+    val maxDragPx = remember(screenHeightPx) { screenHeightPx * 0.6f } // сколько тянуть до полного закрытия
+
+    // Прогресс закрытия от 0f до 1f. 0f — плеер полностью открыт, 1f — готов к закрытию.
+    var closeProgress by remember { mutableStateOf(0f) }
+    var isDraggingToClose by remember { mutableStateOf(false) }
+
+    // Смещение и прозрачность содержимого плеера при закрытии
+    val contentOffsetY = remember(closeProgress, screenHeightPx) {
+        (screenHeightPx * 0.6f * closeProgress.coerceIn(0f, 1f))
+    }
+    val contentAlpha = remember(closeProgress) { (1f - closeProgress.coerceIn(0f, 1f)).coerceIn(0f, 1f) }
+
+    // Scope для анимации закрытия по кнопке (стрелка)
+    val closeScope = rememberCoroutineScope()
+
+    // Корневой контейнер - показываем предыдущий экран под плеером во время закрытия
+    // Используем правильное кэширование, чтобы экран не перезагружался
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundColor)
-            .offset {
-                IntOffset(
-                    x = offsetX.roundToInt(),
-                    y = baseY.roundToInt()
-                )
-            }
-            .scale(scale)
-            .alpha(playerAlpha)
     ) {
-        // Фоновый однотонный цвет (если не закрываемся) - заменён градиент
-        if (!isClosing) {
+        // Показываем предыдущий экран под плеером во время свайпа вниз
+        // Это нужно, чтобы вместо белого фона был виден реальный экран
+        // Используем remember для стабильности previousRoute и правильное кэширование
+        val stablePreviousRoute = remember(previousRoute) { previousRoute }
+        
+        // Показываем предыдущий экран когда начинается закрытие (closeProgress > 0.1)
+        // Это ускоряет загрузку страницы и делает анимацию кнопки стрелки видимой
+        // Используем alpha для плавного появления
+        if (stablePreviousRoute != null && navController != null && closeProgress > 0.1f) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(backgroundSolidColor)
-            )
+                    .alpha(closeProgress.coerceIn(0f, 1f))
+            ) {
+                // Отображаем предыдущий экран по маршруту
+                // Используем key для стабильности, чтобы Compose не пересоздавал экран
+                // и remember для кэширования, чтобы состояние сохранялось
+                key(stablePreviousRoute) {
+                    // Используем LaunchedEffect для сохранения состояния экрана
+                    LaunchedEffect(stablePreviousRoute) {
+                        // Сохраняем состояние экрана в savedStateHandle для предотвращения перезагрузки
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("cachedRoute", stablePreviousRoute)
+                    }
+                    com.example.lumisound.navigation.ScreenContent(
+                        route = stablePreviousRoute,
+                        navController = navController,
+                        userName = userName
+                    )
+                }
+            }
         }
-        
-        // Прокручиваемое содержимое
+
+        // Прокручиваемое содержимое плеера как «шторка», которая выезжает снизу
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .offset(y = with(density) { contentOffsetY.toDp() })
+                .alpha(contentAlpha)
+                // Фон только у самой «шторки», а не на весь экран.
+                // При закрытии делаем фон прозрачным, чтобы был виден предыдущий экран из Navigation back stack
+                .background(backgroundSolidColor.copy(alpha = (1f - closeProgress * 0.5f).coerceIn(0.5f, 1f)))
                 .statusBarsPadding()
-                .verticalScroll(scrollState)
                 .padding(24.dp)
                 .padding(bottom = 80.dp)
         ) {
-            // Header со стрелкой
+            // Header со стрелкой слева (как в примере)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -232,18 +204,8 @@ fun TestPlayerScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = {
-                    if (!isClosing) {
-                        isClosing = true
-                    }
-                }) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowDownward,
-                        contentDescription = "Close",
-                        tint = ColorOnBackground,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                // Заглушка для выравнивания - кнопка будет размещена отдельно, но синхронизирована с контентом
+                Spacer(modifier = Modifier.size(48.dp))
                 Text(
                     text = "Сейчас играет",
                     color = ColorSecondary,
@@ -459,105 +421,124 @@ fun TestPlayerScreen(
                     )
                 }
             }
+        }
 
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Rating Section - заменён градиент на однотонный цвет
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        color = ColorSurface.copy(alpha = 0.8f), // Темно-серый вместо градиента
-                        shape = RoundedCornerShape(20.dp)
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = Color(0xFF1F1F1F).copy(alpha = 0.4f), // Тёмно-серый для границы
-                        shape = RoundedCornerShape(20.dp)
-                    )
-                    .padding(24.dp)
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "Оцените этот трек",
-                        color = ColorOnBackground,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "Это поможет нам подбирать музыку для вас",
-                        color = ColorSecondary,
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center
-                    )
-
-                    // Rating Scale 1-10
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        (1..10).forEach { rating ->
-                            val isActive = userRating == rating
-                            val isHovered = hoveredRating >= rating
-                            val shouldHighlight = isActive || isHovered
-
-                            Box(
-                                modifier = Modifier
-                                    .size(width = 32.dp, height = 48.dp)
-                                    .background(
-                                        color = remember(shouldHighlight) {
-                                            if (shouldHighlight) {
-                                                GradientStart // Однотонный акцентный цвет
-                                            } else {
-                                                ColorSurface // Тёмно-серый для неактивных
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (shouldHighlight) {
-                                            Color.Transparent
-                                        } else {
-                                            Color(0xFF1F1F1F).copy(alpha = 0.4f) // Тёмно-серый вместо 0xFF2A2D3E
-                                        },
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .shadow(
-                                        elevation = if (shouldHighlight) 4.dp else 0.dp,
-                                        shape = RoundedCornerShape(8.dp),
-                                        spotColor = if (shouldHighlight) GradientStart.copy(alpha = 0.4f) else Color.Transparent
-                                    )
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null
-                                    ) {
-                                        userRating = rating
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "$rating",
-                                    color = if (shouldHighlight) Color.White else ColorSecondary,
-                                    fontSize = 14.sp,
-                                    fontWeight = if (shouldHighlight) FontWeight.Bold else FontWeight.Normal
-                                )
+        // Невидимая широкая зона вверху для свайпа вниз, как на примере.
+        // Размещаем ЕЁ ПОСЛЕ контента и с align, чтобы она была "поверх" и ловила жесты.
+        // НО исключаем область Row с кнопкой (первые ~80dp по ширине и ~60dp по высоте), чтобы не мешать кликам
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+                .align(Alignment.TopCenter)
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragStart = { offset ->
+                            // Игнорируем жесты, которые начинаются в области Row с кнопкой
+                            // Row с кнопкой находится слева, примерно первые 80dp по ширине
+                            // и первые 60dp по высоте (с учетом padding и status bar)
+                            val buttonAreaWidth = with(density) { 80.dp.toPx() }
+                            val buttonAreaHeight = with(density) { 60.dp.toPx() }
+                            if (offset.x < buttonAreaWidth && offset.y < buttonAreaHeight) {
+                                return@detectVerticalDragGestures // Не обрабатываем жесты в области кнопки
+                            }
+                            isDraggingToClose = true
+                        },
+                        onDragEnd = {
+                            // Если протянули достаточно далеко — сразу закрываем экран.
+                            // ВАЖНО: НЕ сбрасываем closeProgress перед onClose, чтобы не было
+                            // лишнего кадра с полностью открытым плеером.
+                            if (closeProgress >= 0.4f) {
+                                isDraggingToClose = false
+                                onClose()
+                            } else {
+                                // Иначе просто возвращаем в исходное состояние.
+                                closeProgress = 0f
+                                isDraggingToClose = false
+                            }
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            // Игнорируем жесты в области Row с кнопкой
+                            val buttonAreaWidth = with(density) { 80.dp.toPx() }
+                            val buttonAreaHeight = with(density) { 60.dp.toPx() }
+                            if (change.position.x < buttonAreaWidth && change.position.y < buttonAreaHeight) {
+                                return@detectVerticalDragGestures // Не обрабатываем в области кнопки
+                            }
+                            
+                            if (dragAmount > 0) { // тянем вниз
+                                val newProgress = (closeProgress + (dragAmount / maxDragPx)).coerceIn(0f, 1f)
+                                closeProgress = newProgress
+                                change.consume()
+                            } else if (dragAmount < 0 && closeProgress > 0f) {
+                                // Можно немного вернуть вверх
+                                val newProgress = (closeProgress + (dragAmount / maxDragPx)).coerceIn(0f, 1f)
+                                closeProgress = newProgress
+                                change.consume()
                             }
                         }
-                    }
-
-                    if (userRating > 0) {
-                        Text(
-                            text = "✨ Оценка: $userRating/10",
-                            color = GradientStart,
-                            fontSize = 14.sp,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
+                    )
                 }
-            }
+        )
+        
+        // Кнопка стрелки размещена ОТДЕЛЬНО поверх всего, но синхронизирована с позицией контента
+        // Это позволяет ей получать клики (быть поверх зоны свайпа) и двигаться вместе с контентом
+        // Column имеет: statusBarsPadding() + padding(24.dp) + padding(vertical = 12.dp)
+        // Кнопка должна быть на той же позиции, что и в Row внутри Column
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding() // Те же отступы, что и в Column
+                // Синхронизируем offset с контентом - кнопка двигается вместе с ним
+                // Добавляем небольшой отступ вниз, чтобы кнопка была вровень с текстом "Сейчас играет"
+                .offset(
+                    x = 24.dp, // padding Column
+                    y = 32.dp + with(density) { contentOffsetY.toDp() } // опустили стрелочку ниже
+                )
+                // Синхронизируем alpha с контентом - кнопка исчезает вместе с ним
+                .alpha(contentAlpha)
+                .size(48.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    // Быстрая анимация свайпа вниз при нажатии на стрелочку
+                    // Замена ручного свайпа - быстрая анимация закрытия с показом предыдущего экрана
+                    closeScope.launch {
+                        isDraggingToClose = true
+                        // Быстрая анимация: плавное закрытие с показом предыдущего экрана
+                        val steps = 20
+                        val duration = 250L // Длительность для плавной анимации
+                        val stepDelay = duration / steps
+                        
+                        // Анимация с ускорением (easing) для более естественного движения
+                        // Используем более плавное easing для лучшей видимости анимации
+                        repeat(steps) { i ->
+                            val t = (i + 1).toFloat() / steps
+                            // Используем кубическое easing для более плавного движения
+                            val easedT = t * t * (3f - 2f * t) // Smoothstep easing
+                            closeProgress = easedT.coerceIn(0f, 1f)
+                            delay(stepDelay)
+                        }
+                        
+                        // Убеждаемся, что прогресс достиг максимума перед закрытием
+                        closeProgress = 1f
+                        isDraggingToClose = false
+                        
+                        // Небольшая задержка для завершения анимации
+                        delay(50)
+                        
+                        onClose()
+                        // closeProgress сбрасывать не нужно — экран будет уничтожен навигацией
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.ArrowDropDown,
+                contentDescription = "Close",
+                tint = ColorOnBackground,
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }

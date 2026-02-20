@@ -97,7 +97,7 @@ fun NowPlayingScreen(
     val context = LocalContext.current
     
     // КРИТИЧНО: Устанавливаем настройки status bar также в NowPlayingScreen
-    // Это гарантирует, что настройки применяются даже если AnimatedPlayerSheet не успел их установить
+    // Это гарантирует, что настройки применяются сразу при открытии плеера
     // Используем DisposableEffect для гарантированного применения при входе
     androidx.compose.runtime.DisposableEffect(Unit) {
         if (!view.isInEditMode && context is Activity) {

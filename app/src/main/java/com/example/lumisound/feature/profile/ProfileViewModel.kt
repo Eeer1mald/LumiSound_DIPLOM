@@ -62,13 +62,31 @@ class ProfileViewModel @Inject constructor(
     private val _avatarUri = MutableStateFlow<Uri?>(null)
     val avatarUri = _avatarUri.asStateFlow()
     
+    // Флаги для отслеживания загрузки данных
+    private var isProfileLoaded = false
+    private var areTracksLoaded = false
+    private var areArtistsLoaded = false
+    
     init {
-        loadProfile()
-        loadFavoriteTracks()
-        loadFavoriteArtists()
+        // Загружаем данные только если они еще не загружены
+        // Это предотвращает перезагрузку при возврате из плеера
+        if (!isProfileLoaded) {
+            loadProfile()
+        }
+        if (!areTracksLoaded) {
+            loadFavoriteTracks()
+        }
+        if (!areArtistsLoaded) {
+            loadFavoriteArtists()
+        }
     }
     
     fun loadProfile() {
+        // Если профиль уже загружен, не загружаем снова
+        if (isProfileLoaded && _uiState.value.username.isNotEmpty()) {
+            return
+        }
+        
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             val accessToken = sessionManager.getAccessToken()
@@ -77,6 +95,7 @@ class ProfileViewModel @Inject constructor(
                 authRepository.getProfile(accessToken)
                     .onSuccess { profile ->
                         if (profile != null) {
+                            isProfileLoaded = true
                             _uiState.value = _uiState.value.copy(
                                 username = profile.username,
                                 bio = profile.bio,
@@ -120,12 +139,18 @@ class ProfileViewModel @Inject constructor(
     }
     
     fun loadFavoriteTracks() {
+        // Если треки уже загружены, не загружаем снова
+        if (areTracksLoaded && _uiState.value.favoriteTracks.isNotEmpty()) {
+            return
+        }
+        
         viewModelScope.launch {
             val accessToken = sessionManager.getAccessToken()
             if (accessToken != null) {
                 // Загружаем топ-10 треков по количеству прослушиваний
                 authRepository.getFavoriteTracks(accessToken, limit = 10, orderByPlayCount = true)
                     .onSuccess { tracks ->
+                        areTracksLoaded = true
                         val favoriteTracks = tracks.map { track ->
                             FavoriteTrack(
                                 id = track.id,
@@ -148,12 +173,18 @@ class ProfileViewModel @Inject constructor(
     }
     
     fun loadFavoriteArtists() {
+        // Если артисты уже загружены, не загружаем снова
+        if (areArtistsLoaded && _uiState.value.favoriteArtists.isNotEmpty()) {
+            return
+        }
+        
         viewModelScope.launch {
             val accessToken = sessionManager.getAccessToken()
             if (accessToken != null) {
                 // Загружаем топ-10 артистов по количеству прослушиваний
                 authRepository.getFavoriteArtists(accessToken, limit = 10)
                     .onSuccess { artists ->
+                        areArtistsLoaded = true
                         val favoriteArtists = artists.map { artist ->
                             FavoriteArtist(
                                 id = artist.id,
