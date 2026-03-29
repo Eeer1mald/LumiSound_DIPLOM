@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -184,22 +186,20 @@ fun PlayerScreen(
                 .fillMaxSize()
                 .offset(y = with(density) { contentOffsetY.toDp() })
                 .alpha(contentAlpha)
-                // Фон только у самой «шторки», а не на весь экран.
-                // При закрытии делаем фон прозрачным, чтобы был виден предыдущий экран из Navigation back stack
                 .background(backgroundSolidColor.copy(alpha = (1f - effectiveCloseProgress * 0.5f).coerceIn(0.5f, 1f)))
                 .statusBarsPadding()
-                .padding(24.dp)
-                .padding(bottom = 80.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
         ) {
-            // Header со стрелкой слева (как в примере)
+            // Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 0.dp, vertical = 12.dp),
+                    .padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Заглушка для выравнивания - кнопка будет размещена отдельно, но синхронизирована с контентом
                 Spacer(modifier = Modifier.size(48.dp))
                 Text(
                     text = "Сейчас играет",
@@ -209,13 +209,13 @@ fun PlayerScreen(
                 Spacer(modifier = Modifier.size(48.dp))
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Album Cover
+            // Album Cover — фиксированная высота вместо aspectRatio
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1f)
+                    .height(280.dp)
                     .clip(RoundedCornerShape(24.dp))
                     .shadow(
                         elevation = 24.dp,
@@ -225,18 +225,14 @@ fun PlayerScreen(
             ) {
                 if (track.hdImageUrl != null && track.hdImageUrl.isNotEmpty()) {
                     AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(track.hdImageUrl)
-                            .build(),
+                        model = ImageRequest.Builder(context).data(track.hdImageUrl).build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
                 } else if (track.imageUrl != null && track.imageUrl.isNotEmpty()) {
                     AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(track.imageUrl)
-                            .build(),
+                        model = ImageRequest.Builder(context).data(track.imageUrl).build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -245,7 +241,7 @@ fun PlayerScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(ColorSurface), // Тёмно-серый вместо 0xFF1A1B2E
+                            .background(ColorSurface),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -258,53 +254,48 @@ fun PlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Track Info
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 0.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
                     text = track.name,
                     color = ColorOnBackground,
-                    fontSize = 24.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
                 Text(
                     text = track.artist ?: "",
                     color = ColorSecondary,
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     textAlign = TextAlign.Center
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Progress Bar
-            Column(
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(4.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(Color(0xFF1F1F1F)) // Тёмно-серый вместо 0xFF2A2D3E
+                        .background(Color(0xFF1F1F1F))
                 ) {
                     val progress = if (duration > 0) {
                         (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
                     } else 0f
-                    
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(progress)
                             .height(4.dp)
-                            .background(GradientStart) // Заменён градиент на однотонный цвет
+                            .background(GradientStart)
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -312,24 +303,18 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = formatTime(currentPosition),
-                        color = ColorSecondary,
-                        fontSize = 12.sp
-                    )
-                    Text(
-                        text = formatTime(duration),
-                        color = ColorSecondary,
-                        fontSize = 12.sp
-                    )
+                    Text(text = formatTime(currentPosition), color = ColorSecondary, fontSize = 12.sp)
+                    Text(text = formatTime(duration), color = ColorSecondary, fontSize = 12.sp)
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Controls
+            // Controls — гарантированно достаточно места
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -351,11 +336,11 @@ fun PlayerScreen(
                     )
                 }
 
-                // Previous — круглая кнопка
+                // Previous
                 Box(
                     modifier = Modifier
-                        .size(56.dp)
-                        .background(color = ColorSurface, shape = CircleShape)
+                        .size(60.dp)
+                        .background(color = Color(0xFF2A2A2A), shape = CircleShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -366,15 +351,15 @@ fun PlayerScreen(
                         imageVector = Icons.Default.SkipPrevious,
                         contentDescription = "Previous",
                         tint = ColorOnBackground,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
 
-                // Play/Pause — большая круглая кнопка
+                // Play/Pause
                 Box(
                     modifier = Modifier
-                        .size(72.dp)
-                        .shadow(elevation = 16.dp, shape = CircleShape, spotColor = GradientStart.copy(alpha = 0.5f))
+                        .size(76.dp)
+                        .shadow(elevation = 20.dp, shape = CircleShape, spotColor = GradientStart.copy(alpha = 0.6f))
                         .background(color = GradientStart, shape = CircleShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -386,15 +371,15 @@ fun PlayerScreen(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
                         tint = Color.White,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(38.dp)
                     )
                 }
 
-                // Next — круглая кнопка
+                // Next
                 Box(
                     modifier = Modifier
-                        .size(56.dp)
-                        .background(color = ColorSurface, shape = CircleShape)
+                        .size(60.dp)
+                        .background(color = Color(0xFF2A2A2A), shape = CircleShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -405,7 +390,7 @@ fun PlayerScreen(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next",
                         tint = ColorOnBackground,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
 
