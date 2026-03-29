@@ -160,7 +160,6 @@ fun ProfileScreen(
                     compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
                 }
                 .verticalScroll(scrollState)
-                .padding(bottom = 160.dp) // Добавлен отступ для нижней панели навигации и мини-плеера
         ) {
             // Header with dark background - используем remember для оптимизации
             Box(

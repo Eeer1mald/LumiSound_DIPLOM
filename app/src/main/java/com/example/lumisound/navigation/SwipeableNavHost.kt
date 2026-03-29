@@ -30,8 +30,8 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.abs
@@ -124,18 +124,17 @@ fun SwipeableNavHost(
     // Целевой прогресс для анимации после отпускания пальца
     var targetAnimationProgress by remember { mutableStateOf(0f) }
     
-    // Плавная анимация прогресса с помощью animateFloatAsState
-    // Во время свайпа используем rawAnimationProgress напрямую, после - анимируем к targetAnimationProgress
+    // Плавная анимация snap после отпускания пальца (spring вместо tween для 120Hz)
     val animatedProgress by animateFloatAsState(
-        targetValue = if (isDraggingMiniPlayer) rawAnimationProgress else targetAnimationProgress,
-        animationSpec = tween(
-            durationMillis = if (isDraggingMiniPlayer) 0 else 300,
-            easing = FastOutSlowInEasing
+        targetValue = targetAnimationProgress,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
         ),
         label = "miniPlayerAnimation"
     )
     
-    // Используем анимированный прогресс для отображения
+    // Во время drag используем rawAnimationProgress напрямую (без анимации = без лагов)
     val animationProgress = if (isDraggingMiniPlayer) rawAnimationProgress else animatedProgress
     
     // Проверяем, находимся ли мы уже на экране плеера

@@ -2,7 +2,6 @@ package com.example.lumisound.feature.nowplaying
 
 import android.app.Activity
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -122,17 +121,6 @@ fun NowPlayingScreen(
         }
     }
     
-    // SideEffect для применения при каждой рекомпозиции
-    SideEffect {
-        if (!view.isInEditMode && context is Activity) {
-            val window = context.window
-            val insetsController = WindowCompat.getInsetsController(window, view)
-            
-            window.statusBarColor = android.graphics.Color.TRANSPARENT
-            insetsController.isAppearanceLightStatusBars = false
-            insetsController.isAppearanceLightNavigationBars = false
-        }
-    }
     
     val isPlaying by viewModel.isPlaying.collectAsState()
     val currentPosition by viewModel.currentPosition.collectAsState()
@@ -157,11 +145,6 @@ fun NowPlayingScreen(
         )
     }
     val scrollState = rememberScrollState()
-    
-    // Отслеживаем изменения scrollState и передаем их в родительский компонент
-    LaunchedEffect(scrollState.value) {
-        onScrollStateChange?.invoke(scrollState.value)
-    }
     
     Box(
         modifier = modifier
@@ -301,6 +284,12 @@ fun NowPlayingScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
             ) {
+                val progress = if (duration > 0) {
+                    (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+                } else 0f
+                val progressBarGradient = remember {
+                    Brush.horizontalGradient(colors = listOf(GradientStart, GradientEnd))
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -314,24 +303,11 @@ fun NowPlayingScreen(
                             // TODO: Seek on click
                         }
                 ) {
-                    val progress = if (duration > 0) {
-                        (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-                    } else 0f
-                    
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(progress)
                             .height(4.dp)
-                            .background(
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(GradientStart, GradientEnd)
-                                )
-                            )
-                            .shadow(
-                                elevation = 4.dp,
-                                shape = RoundedCornerShape(2.dp),
-                                spotColor = GradientStart.copy(alpha = 0.5f)
-                            )
+                            .background(brush = progressBarGradient)
                     )
                 }
                 Row(
@@ -493,6 +469,12 @@ fun NowPlayingScreen(
                     )
 
                     // Rating Scale 1-10
+                    val activeGradient = remember {
+                        Brush.linearGradient(colors = listOf(GradientStart, GradientEnd))
+                    }
+                    val inactiveGradient = remember {
+                        Brush.linearGradient(colors = listOf(Color(0xFF1A1B2E), Color(0xFF1A1B2E)))
+                    }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -505,20 +487,7 @@ fun NowPlayingScreen(
                                 modifier = Modifier
                                     .size(width = 32.dp, height = 48.dp)
                                     .background(
-                                        brush = remember(shouldHighlight) {
-                                            if (shouldHighlight) {
-                                                Brush.linearGradient(
-                                                    colors = listOf(GradientStart, GradientEnd)
-                                                )
-                                            } else {
-                                                Brush.linearGradient(
-                                                    colors = listOf(
-                                                        Color(0xFF1A1B2E),
-                                                        Color(0xFF1A1B2E)
-                                                    )
-                                                )
-                                            }
-                                        },
+                                        brush = if (shouldHighlight) activeGradient else inactiveGradient,
                                         shape = RoundedCornerShape(8.dp)
                                     )
                                     .border(
@@ -529,11 +498,6 @@ fun NowPlayingScreen(
                                             Color(0xFF2A2D3E).copy(alpha = 0.4f)
                                         },
                                         shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .shadow(
-                                        elevation = if (shouldHighlight) 4.dp else 0.dp,
-                                        shape = RoundedCornerShape(8.dp),
-                                        spotColor = if (shouldHighlight) GradientStart.copy(alpha = 0.4f) else Color.Transparent
                                     )
                                     .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
