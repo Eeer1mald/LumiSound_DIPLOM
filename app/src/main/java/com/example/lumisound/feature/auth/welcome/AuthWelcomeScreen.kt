@@ -16,6 +16,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,36 +45,29 @@ fun AuthWelcomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(ColorBackground)
-            .padding(horizontal = 24.dp, vertical = 32.dp),
+            .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(80.dp))
 
         val context = LocalContext.current
         val logoId = remember { context.resources.getIdentifier("logo", "drawable", context.packageName) }
         val placeholderId = remember { context.resources.getIdentifier("ic_logo_foreground", "drawable", context.packageName) }
 
-        Box(
+        androidx.compose.foundation.Image(
+            painter = painterResource(
+                id = when {
+                    logoId != 0 -> logoId
+                    placeholderId != 0 -> placeholderId
+                    else -> android.R.drawable.ic_menu_gallery
+                }
+            ),
+            contentDescription = stringResource(R.string.app_name),
             modifier = Modifier
-                .size(320.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(ColorBackground),
-            contentAlignment = Alignment.Center
-        ) {
-            androidx.compose.foundation.Image(
-                painter = painterResource(
-                    id = when {
-                        logoId != 0 -> logoId
-                        placeholderId != 0 -> placeholderId
-                        else -> android.R.drawable.ic_menu_gallery
-                    }
-                ),
-                contentDescription = stringResource(R.string.app_name),
-                modifier = Modifier.fillMaxSize()
-            )
-        }
+                .fillMaxWidth(0.5f)
+        )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(40.dp))
 
         Text(
             text = stringResource(R.string.tagline),
@@ -103,7 +97,9 @@ fun AuthWelcomeScreen(
                 containerColor = Color.Transparent,
                 contentColor = Color(0xFFE6E6EB)
             ),
-            border = BorderStroke(1.5.dp, Brush.horizontalGradient(listOf(GradientStart.copy(alpha = 0.6f), GradientEnd.copy(alpha = 0.6f))))
+            border = BorderStroke(1.5.dp, remember {
+                Brush.horizontalGradient(listOf(GradientStart.copy(alpha = 0.6f), GradientEnd.copy(alpha = 0.6f)))
+            })
         ) {
             Text(
                 text = stringResource(R.string.register),

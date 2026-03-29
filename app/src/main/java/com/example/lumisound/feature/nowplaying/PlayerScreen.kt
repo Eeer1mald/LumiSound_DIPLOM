@@ -35,11 +35,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -93,16 +91,17 @@ fun PlayerScreen(
     val view = LocalView.current
     val context = LocalContext.current
     
-    // Минимальные настройки status bar
-    SideEffect {
+    // Настройки status bar — только один раз при входе
+    androidx.compose.runtime.DisposableEffect(Unit) {
         if (!view.isInEditMode && context is Activity) {
             val window = context.window
             val insetsController = WindowCompat.getInsetsController(window, view)
-            
             window.statusBarColor = android.graphics.Color.TRANSPARENT
             insetsController.isAppearanceLightStatusBars = false
             insetsController.isAppearanceLightNavigationBars = false
+            WindowCompat.setDecorFitsSystemWindows(window, false)
         }
+        onDispose { }
     }
     
     // Player state для элементов управления
@@ -128,19 +127,27 @@ fun PlayerScreen(
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
-    val maxDragPx = remember(screenHeightPx) { screenHeightPx * 0.6f } // сколько тянуть до полного закрытия
+    val maxDragPx = screenHeightPx * 0.6f
 
-    // Прогресс закрытия от 0f до 1f. 0f — плеер полностью открыт, 1f — готов к закрытию.
     var closeProgress by remember { mutableStateOf(0f) }
     var isDraggingToClose by remember { mutableStateOf(false) }
+    var targetCloseProgress by remember { mutableStateOf(0f) }
 
-    // Смещение и прозрачность содержимого плеера при закрытии
-    val contentOffsetY = remember(closeProgress, screenHeightPx) {
-        (screenHeightPx * 0.6f * closeProgress.coerceIn(0f, 1f))
-    }
-    val contentAlpha = remember(closeProgress) { (1f - closeProgress.coerceIn(0f, 1f)).coerceIn(0f, 1f) }
+    // Анимированный прогресс: во время drag — прямой, после — spring
+    val animatedCloseProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = targetCloseProgress,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+        ),
+        label = "closeProgress"
+    )
+    val effectiveCloseProgress = if (isDraggingToClose) closeProgress else animatedCloseProgress
 
-    // Scope для анимации закрытия по кнопке (стрелка)
+    // Смещение и прозрачность — inline вычисления без remember
+    val contentOffsetY = screenHeightPx * 0.6f * effectiveCloseProgress.coerceIn(0f, 1f)
+    val contentAlpha = (1f - effectiveCloseProgress.coerceIn(0f, 1f)).coerceIn(0f, 1f)
+
     val closeScope = rememberCoroutineScope()
 
     // Корневой контейнер - показываем предыдущий экран под плеером во время закрытия
@@ -154,26 +161,14 @@ fun PlayerScreen(
         // Используем remember для стабильности previousRoute и правильное кэширование
         val stablePreviousRoute = remember(previousRoute) { previousRoute }
         
-        // Показываем предыдущий экран когда начинается закрытие (closeProgress > 0.1)
-        // Это ускоряет загрузку страницы и делает анимацию кнопки стрелки видимой
-        // Используем alpha для плавного появления
-        if (stablePreviousRoute != null && navController != null && closeProgress > 0.1f) {
+        // Показываем предыдущий экран когда начинается закрытие (effectiveCloseProgress > 0.1)
+        if (stablePreviousRoute != null && navController != null && effectiveCloseProgress > 0.1f) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .alpha(closeProgress.coerceIn(0f, 1f))
+                    .alpha(effectiveCloseProgress.coerceIn(0f, 1f))
             ) {
-                // Отображаем предыдущий экран по маршруту
-                // Используем key для стабильности, чтобы Compose не пересоздавал экран
-                // и remember для кэширования, чтобы состояние сохранялось
                 key(stablePreviousRoute) {
-                    // Используем LaunchedEffect для сохранения состояния экрана
-                    LaunchedEffect(stablePreviousRoute) {
-                        // Сохраняем состояние экрана в savedStateHandle для предотвращения перезагрузки
-                        navController.currentBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("cachedRoute", stablePreviousRoute)
-                    }
                     com.example.lumisound.navigation.ScreenContent(
                         route = stablePreviousRoute,
                         navController = navController,
@@ -191,7 +186,7 @@ fun PlayerScreen(
                 .alpha(contentAlpha)
                 // Фон только у самой «шторки», а не на весь экран.
                 // При закрытии делаем фон прозрачным, чтобы был виден предыдущий экран из Navigation back stack
-                .background(backgroundSolidColor.copy(alpha = (1f - closeProgress * 0.5f).coerceIn(0.5f, 1f)))
+                .background(backgroundSolidColor.copy(alpha = (1f - effectiveCloseProgress * 0.5f).coerceIn(0.5f, 1f)))
                 .statusBarsPadding()
                 .padding(24.dp)
                 .padding(bottom = 80.dp)
@@ -335,50 +330,52 @@ fun PlayerScreen(
             // Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = { isLiked = !isLiked },
-                    modifier = Modifier.size(48.dp)
+                // Like
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { isLiked = !isLiked },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = "Like",
                         tint = if (isLiked) ColorAccentSecondary else ColorSecondary,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
-
-                IconButton(
-                    onClick = { viewModel.previousTrack() },
-                    modifier = Modifier.size(56.dp)
+                // Previous — круглая кнопка
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(color = ColorSurface, shape = CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { viewModel.previousTrack() },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.SkipPrevious,
                         contentDescription = "Previous",
                         tint = ColorOnBackground,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(28.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.weight(0.5f))
-
-                // Заменён градиент на однотонный цвет для кнопки воспроизведения
+                // Play/Pause — большая круглая кнопка
                 Box(
                     modifier = Modifier
-                        .size(80.dp)
-                        .background(
-                            color = GradientStart, // Однотонный вместо градиента
-                            shape = CircleShape
-                        )
-                        .shadow(
-                            elevation = 12.dp,
-                            shape = CircleShape,
-                            spotColor = GradientStart.copy(alpha = 0.4f)
-                        )
+                        .size(72.dp)
+                        .shadow(elevation = 16.dp, shape = CircleShape, spotColor = GradientStart.copy(alpha = 0.5f))
+                        .background(color = GradientStart, shape = CircleShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -389,35 +386,44 @@ fun PlayerScreen(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
                         tint = Color.White,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.weight(0.5f))
-
-                IconButton(
-                    onClick = { viewModel.nextTrack() },
-                    modifier = Modifier.size(56.dp)
+                // Next — круглая кнопка
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(color = ColorSurface, shape = CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { viewModel.nextTrack() },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next",
                         tint = ColorOnBackground,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(28.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
-
-                IconButton(
-                    onClick = { },
-                    modifier = Modifier.size(48.dp)
+                // Add
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add to playlist",
                         tint = ColorSecondary,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -445,16 +451,13 @@ fun PlayerScreen(
                             isDraggingToClose = true
                         },
                         onDragEnd = {
-                            // Если протянули достаточно далеко — сразу закрываем экран.
-                            // ВАЖНО: НЕ сбрасываем closeProgress перед onClose, чтобы не было
-                            // лишнего кадра с полностью открытым плеером.
                             if (closeProgress >= 0.4f) {
                                 isDraggingToClose = false
                                 onClose()
                             } else {
-                                // Иначе просто возвращаем в исходное состояние.
                                 closeProgress = 0f
                                 isDraggingToClose = false
+                                targetCloseProgress = 0f
                             }
                         },
                         onVerticalDrag = { change, dragAmount ->
@@ -491,44 +494,21 @@ fun PlayerScreen(
                 // Синхронизируем offset с контентом - кнопка двигается вместе с ним
                 // Добавляем небольшой отступ вниз, чтобы кнопка была вровень с текстом "Сейчас играет"
                 .offset(
-                    x = 24.dp, // padding Column
-                    y = 32.dp + with(density) { contentOffsetY.toDp() } // опустили стрелочку ниже
+                    x = 24.dp,
+                    y = 32.dp + with(density) { contentOffsetY.toDp() }
                 )
-                // Синхронизируем alpha с контентом - кнопка исчезает вместе с ним
                 .alpha(contentAlpha)
                 .size(48.dp)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
                 ) {
-                    // Быстрая анимация свайпа вниз при нажатии на стрелочку
-                    // Замена ручного свайпа - быстрая анимация закрытия с показом предыдущего экрана
+                    // Анимация закрытия через spring — плавно и без delay
+                    isDraggingToClose = false
+                    targetCloseProgress = 1f
                     closeScope.launch {
-                        isDraggingToClose = true
-                        // Быстрая анимация: плавное закрытие с показом предыдущего экрана
-                        val steps = 20
-                        val duration = 250L // Длительность для плавной анимации
-                        val stepDelay = duration / steps
-                        
-                        // Анимация с ускорением (easing) для более естественного движения
-                        // Используем более плавное easing для лучшей видимости анимации
-                        repeat(steps) { i ->
-                            val t = (i + 1).toFloat() / steps
-                            // Используем кубическое easing для более плавного движения
-                            val easedT = t * t * (3f - 2f * t) // Smoothstep easing
-                            closeProgress = easedT.coerceIn(0f, 1f)
-                            delay(stepDelay)
-                        }
-                        
-                        // Убеждаемся, что прогресс достиг максимума перед закрытием
-                        closeProgress = 1f
-                        isDraggingToClose = false
-                        
-                        // Небольшая задержка для завершения анимации
-                        delay(50)
-                        
+                        delay(300) // ждём завершения spring анимации
                         onClose()
-                        // closeProgress сбрасывать не нужно — экран будет уничтожен навигацией
                     }
                 },
             contentAlignment = Alignment.Center

@@ -26,14 +26,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
@@ -54,7 +50,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -101,18 +96,28 @@ fun LoginScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Google Sign-In setup
-    val googleSignInClient = remember {
-        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken("720567253667-nseep0m3eahgo2gpe7dr0uvrnp3k35iu.apps.googleusercontent.com")
-            .requestEmail()
-            .build()
-        GoogleSignIn.getClient(context, gso)
+    // Google Sign-In setup - безопасная инициализация для устройств без Google Services
+    val googleSignInClient: GoogleSignInClient? = remember {
+        try {
+            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken("720567253667-nseep0m3eahgo2gpe7dr0uvrnp3k35iu.apps.googleusercontent.com")
+                .requestEmail()
+                .build()
+            GoogleSignIn.getClient(context, gso)
+        } catch (e: Exception) {
+            // Google Services недоступны (например, на Huawei без GMS)
+            null
+        }
     }
 
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        if (googleSignInClient == null) {
+            // Google Sign-In недоступен на этом устройстве
+            return@rememberLauncherForActivityResult
+        }
+        
         coroutineScope.launch {
             try {
                 val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
@@ -125,6 +130,9 @@ fun LoginScreen(
                 }
             } catch (e: ApiException) {
                 snackbarHostState.showSnackbar("Ошибка входа через Google: ${e.message ?: "Неизвестная ошибка"}")
+            } catch (e: Exception) {
+                // Обработка других исключений (например, когда Google Services недоступны)
+                snackbarHostState.showSnackbar("Google Sign-In недоступен на этом устройстве")
             }
         }
     }
@@ -151,23 +159,24 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        ColorBackground,
-                        Color(0xFF0A0B1A),
-                        ColorBackground
+                brush = remember {
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            ColorBackground,
+                            Color(0xFF0A0B1A),
+                            ColorBackground
+                        )
                     )
-                )
+                }
             ),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Color.Transparent,
-        contentWindowInsets = WindowInsets.ime
+        contentWindowInsets = WindowInsets(0)
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .imePadding()
                 .background(ColorBackground)
         ) {
             Column(
@@ -184,7 +193,7 @@ fun LoginScreen(
                         .weight(1f, fill = false),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(48.dp))
 
                 // Logo with animation
                 AnimatedVisibility(
@@ -206,12 +215,11 @@ fun LoginScreen(
                         ),
                         contentDescription = "LumiSound logo",
                         modifier = Modifier
-                            .size(280.dp)
-                            .clip(RoundedCornerShape(20.dp))
+                            .fillMaxWidth(0.5f)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(40.dp))
 
                 // Email field with animation
                 AnimatedVisibility(

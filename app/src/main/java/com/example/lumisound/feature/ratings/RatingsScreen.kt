@@ -24,7 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,6 +49,7 @@ import com.example.lumisound.ui.theme.ColorAccentSecondary
 import com.example.lumisound.ui.theme.ColorBackground
 import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.ColorSecondary
+import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
 
@@ -108,16 +109,15 @@ fun RatingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(modifier = Modifier.weight(1f))
+                    // Заменён градиент на однотонный цвет
+                    val iconColorSolid = remember {
+                        GradientStart.copy(alpha = 0.2f) // Однотонный акцентный цвет
+                    }
                     Box(
                         modifier = Modifier
                             .size(40.dp)
                             .background(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(
-                                        GradientStart.copy(alpha = 0.2f),
-                                        GradientEnd.copy(alpha = 0.2f)
-                                    )
-                                ),
+                                color = iconColorSolid,
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .border(
@@ -165,7 +165,7 @@ fun RatingsScreen(
                     modifier = Modifier.weight(1f)
                 )
                 StatCard(
-                    icon = Icons.Default.TrendingUp,
+                    icon = Icons.AutoMirrored.Filled.TrendingUp,
                     label = "Средняя",
                     value = averageRating,
                     iconColor = GradientStart,
@@ -194,7 +194,11 @@ fun RatingsScreen(
                         onClick = { filterRating = null }
                     )
                 }
-                items(listOf(10, 9, 8, 7, 6, 5)) { rating ->
+                items(
+                    items = listOf(10, 9, 8, 7, 6, 5),
+                    key = { it },
+                    contentType = { _ -> "filter_button" } // Оптимизация для LazyRow
+                ) { rating ->
                     FilterButton(
                         text = "$rating/10",
                         isSelected = filterRating == rating,
@@ -211,6 +215,10 @@ fun RatingsScreen(
                         .padding(horizontal = 16.dp, vertical = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
+                    // Заменён градиент на однотонный цвет
+                    val emptyStateColor = remember {
+                        ColorSurface // Тёмно-серый вместо градиента
+                    }
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
@@ -220,31 +228,25 @@ fun RatingsScreen(
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .background(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(
-                                        Color(0xFF1A1B2E),
-                                        Color(0xFF16182A)
-                                    )
-                                ),
+                                color = emptyStateColor,
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .border(
                                 width = 1.dp,
-                                color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
+                                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .padding(32.dp)
                     ) {
+                        // Заменён градиент на однотонный цвет
+                        val emptyIconColor = remember {
+                            GradientStart.copy(alpha = 0.2f) // Однотонный акцентный цвет
+                        }
                         Box(
                             modifier = Modifier
                                 .size(64.dp)
                                 .background(
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(
-                                            GradientStart.copy(alpha = 0.2f),
-                                            GradientEnd.copy(alpha = 0.2f)
-                                        )
-                                    ),
+                                    color = emptyIconColor, // Однотонный цвет вместо градиента
                                     shape = RoundedCornerShape(18.dp)
                                 )
                                 .border(
@@ -286,7 +288,11 @@ fun RatingsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 80.dp)
                 ) {
-                    items(filteredTracks) { track ->
+                    items(
+                        items = filteredTracks,
+                        key = { it.id },
+                        contentType = { _ -> "rated_track" } // Оптимизация для LazyColumn
+                    ) { track ->
                         RatedTrackItem(
                             track = track,
                             onClick = { onTrackClick(track.id) }
@@ -315,20 +321,19 @@ private fun StatCard(
     iconColor: Color,
     modifier: Modifier = Modifier
 ) {
+    // Заменён градиент на однотонный цвет
+    val statCardColor = remember {
+        ColorSurface // Тёмно-серый вместо градиента
+    }
     Column(
         modifier = modifier
             .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF1A1B2E),
-                        Color(0xFF16182A)
-                    )
-                ),
+                color = statCardColor,
                 shape = RoundedCornerShape(12.dp)
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
+                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
                 shape = RoundedCornerShape(12.dp)
             )
             .padding(12.dp),
@@ -367,26 +372,22 @@ private fun FilterButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Заменены градиенты на однотонные цвета
+    val selectedColor = remember {
+        GradientStart // Однотонный акцентный цвет
+    }
+    val unselectedColor = remember {
+        ColorSurface // Тёмно-серый
+    }
     Box(
         modifier = modifier
             .background(
-                brush = if (isSelected) {
-                    Brush.horizontalGradient(
-                        colors = listOf(GradientStart, GradientEnd)
-                    )
-                } else {
-                    Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFF1A1B2E),
-                            Color(0xFF1A1B2E)
-                        )
-                    )
-                },
+                color = if (isSelected) selectedColor else unselectedColor,
                 shape = RoundedCornerShape(20.dp)
             )
             .border(
                 width = if (isSelected) 0.dp else 1.dp,
-                color = Color(0xFF2A2D3E).copy(alpha = 0.4f),
+                color = Color(0xFF1F1F1F).copy(alpha = 0.4f), // Тёмно-серый вместо 0xFF2A2D3E
                 shape = RoundedCornerShape(20.dp)
             )
             .shadow(
@@ -412,21 +413,30 @@ private fun RatedTrackItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Заменены градиенты на однотонные цвета
+    val trackItemColor = remember {
+        ColorSurface.copy(alpha = 0.8f) // Тёмно-серый вместо градиента
+    }
+    val coverColor = remember {
+        ColorSurface // Тёмно-серый для обложки
+    }
+    val ratingBadgeColor = remember(track.rating) {
+        if (track.rating >= 8) {
+            GradientStart // Однотонный акцентный цвет для высоких оценок
+        } else {
+            ColorSurface // Тёмно-серый для низких оценок
+        }
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
             .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF1A1B2E).copy(alpha = 0.8f),
-                        Color(0xFF16182A).copy(alpha = 0.8f)
-                    )
-                ),
+                color = trackItemColor,
                 shape = RoundedCornerShape(12.dp)
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
+                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
                 shape = RoundedCornerShape(12.dp)
             )
             .clickable(onClick = onClick)
@@ -442,12 +452,7 @@ private fun RatedTrackItem(
                 modifier = Modifier
                     .size(56.dp)
                     .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFF1A1B2E),
-                                Color(0xFF16182A)
-                            )
-                        ),
+                        color = coverColor, // Однотонный цвет вместо градиента
                         shape = RoundedCornerShape(8.dp)
                     )
             )
@@ -484,23 +489,12 @@ private fun RatedTrackItem(
                 modifier = Modifier
                     .size(48.dp)
                     .background(
-                        brush = if (track.rating >= 8) {
-                            Brush.linearGradient(
-                                colors = listOf(GradientStart, GradientEnd)
-                            )
-                        } else {
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF1A1B2E),
-                                    Color(0xFF1A1B2E)
-                                )
-                            )
-                        },
+                        color = ratingBadgeColor, // Однотонный цвет вместо градиента
                         shape = RoundedCornerShape(12.dp)
                     )
                     .border(
                         width = if (track.rating >= 8) 0.dp else 1.dp,
-                        color = Color(0xFF2A2D3E).copy(alpha = 0.4f),
+                        color = Color(0xFF1F1F1F).copy(alpha = 0.4f), // Тёмно-серый вместо 0xFF2A2D3E
                         shape = RoundedCornerShape(12.dp)
                     )
                     .shadow(

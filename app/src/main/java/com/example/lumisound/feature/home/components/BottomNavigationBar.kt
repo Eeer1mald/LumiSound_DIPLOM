@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lumisound.ui.theme.ColorAccentSecondary
+import com.example.lumisound.ui.theme.ColorBackground
 import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.ColorSecondary
 import com.example.lumisound.ui.theme.GradientEnd
@@ -74,12 +75,12 @@ fun BottomNavigationBar(
         modifier = modifier
             .fillMaxWidth()
             .background(
-                color = Color(0xFF0F1020).copy(alpha = 0.95f),
+                color = ColorBackground, // Чёрный фон вместо 0xFF0F1020
                 shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp)
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFF2A2D3E).copy(alpha = 0.4f),
+                color = Color(0xFF1F1F1F).copy(alpha = 0.4f), // Тёмно-серый вместо 0xFF2A2D3E
                 shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp)
             )
             .testTag("bottom_navigation")
@@ -122,17 +123,15 @@ private fun NavigationItem(
             modifier = Modifier
                 .padding(8.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(
-                    if (isActive) {
-                        Brush.horizontalGradient(
-                            colors = listOf(GradientStart, GradientEnd)
-                        )
-                    } else {
-                        Brush.linearGradient(
-                            colors = listOf(Color.Transparent, Color.Transparent)
-                        )
-                    }
-                )
+                    .background(
+                        color = remember(isActive) {
+                            if (isActive) {
+                                GradientStart // Однотонный акцентный цвет вместо градиента
+                            } else {
+                                Color.Transparent
+                            }
+                        }
+                    )
                 .shadow(
                     elevation = if (isActive) 4.dp else 0.dp,
                     shape = RoundedCornerShape(12.dp),

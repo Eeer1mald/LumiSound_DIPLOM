@@ -50,6 +50,7 @@ import com.example.lumisound.feature.home.TrackPreview
 import com.example.lumisound.ui.theme.ColorAccentSecondary
 import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.ColorSecondary
+import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
 
@@ -68,6 +69,13 @@ fun TrackCard(
         label = "play_button_alpha"
     )
 
+    // Заменены градиенты на однотонные цвета
+    val cardColor = remember {
+        ColorSurface // Тёмно-серый вместо градиента
+    }
+    val playButtonColor = remember {
+        GradientStart // Однотонный акцентный цвет
+    }
     Column(
         modifier = modifier
             .width(140.dp)
@@ -79,20 +87,13 @@ fun TrackCard(
                 .width(140.dp)
                 .height(140.dp)
                 .clip(RoundedCornerShape(18.dp))
-                .background(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFF1A1B2E),
-                            Color(0xFF16182A)
-                        )
-                    )
-                )
+                .background(color = cardColor) // Однотонный цвет вместо градиента
                 .border(
                     width = 1.dp,
                     color = if (isHovered) {
                         GradientStart.copy(alpha = 0.4f)
                     } else {
-                        Color(0xFF2A2D3E).copy(alpha = 0.3f)
+                        Color(0xFF1F1F1F).copy(alpha = 0.3f) // Тёмно-серый вместо 0xFF2A2D3E
                     },
                     shape = RoundedCornerShape(18.dp)
                 )
@@ -113,7 +114,7 @@ fun TrackCard(
                     SubcomposeAsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(track.coverUrl)
-                            .crossfade(true)
+                            .crossfade(false) // Отключено для лучшей производительности
                             .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
@@ -160,19 +161,14 @@ fun TrackCard(
                 }
             }
 
-            // Gradient overlay on hover
+            // Заменён градиент на однотонный цвет с прозрачностью
+            val overlayColor = remember(alpha) {
+                GradientStart.copy(alpha = alpha * 0.15f) // Однотонный цвет вместо градиента
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                GradientStart.copy(alpha = alpha * 0.2f),
-                                GradientEnd.copy(alpha = alpha * 0.1f),
-                                Color.Transparent
-                            )
-                        )
-                    )
+                    .background(color = overlayColor)
             )
 
             // Play button on hover
@@ -187,9 +183,7 @@ fun TrackCard(
                         modifier = Modifier
                             .size(48.dp)
                             .background(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(GradientStart, GradientEnd)
-                                ),
+                                color = playButtonColor, // Однотонный цвет вместо градиента
                                 shape = CircleShape
                             )
                             .shadow(
