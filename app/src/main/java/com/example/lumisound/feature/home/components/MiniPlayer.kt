@@ -79,22 +79,39 @@ fun MiniPlayer(
     val density = LocalDensity.current
 
     // Анимация прозрачности: мини-плеер становится прозрачнее при свайпе вверх
-    val alpha = (1f - animationProgress.coerceIn(0f, 1f)).coerceIn(0f, 1f)
+    val alpha = remember(animationProgress) {
+        // Полностью видим в начале, исчезает к моменту полного открытия плеера
+        (1f - animationProgress.coerceIn(0f, 1f)).coerceIn(0f, 1f)
+    }
 
     // Высота самого мини-плеера + вертикальные отступы
-    val miniPlayerTotalHeightPx = with(density) {
-        (72.dp + 16.dp).toPx()
+    val miniPlayerTotalHeightPx = remember(density) {
+        with(density) {
+            // 72.dp высота + 16.dp вертикальные паддинги (8dp сверху и снизу)
+            (72.dp + 16.dp).toPx()
+        }
     }
 
-    // Длина пути мини-плеера при свайпе
-    val miniPlayerTravelPx = with(density) {
-        val screenHeightPx = configuration.screenHeightDp.dp.toPx()
-        val bottomBarHeightPx = 56.dp.toPx()
-        (screenHeightPx - miniPlayerTotalHeightPx - bottomBarHeightPx).coerceAtLeast(0f)
+    // Для синхронного движения с полноэкранным плеером используем ту же «длину пути»,
+    // что и у верхней границы PlayerScreen (см. SwipeableNavHost).
+    // Там путь ≈ screenHeight - (miniPlayer + padding + bottom bar).
+    val miniPlayerTravelPx = remember(configuration, density, miniPlayerTotalHeightPx) {
+        with(density) {
+            val screenHeightPx = configuration.screenHeightDp.dp.toPx()
+            val bottomBarHeightPx = 56.dp.toPx() // приближённая высота нижней навигации
+            (screenHeightPx - miniPlayerTotalHeightPx - bottomBarHeightPx).coerceAtLeast(0f)
+        }
     }
 
-    // Смещение мини-плеера вверх вместе с жестом
-    val miniPlayerOffsetY = -(miniPlayerTravelPx * animationProgress.coerceIn(0f, 1f))
+    // Смещение мини‑плеера вверх вместе с жестом:
+    // при progress = 0 он на своём месте внизу,
+    // при progress = 1 — поднят на ту же высоту, что и лист плеера.
+    // Так мини‑плеер визуально двигается с той же скоростью, что и плеер.
+    val miniPlayerOffsetY = remember(animationProgress, miniPlayerTravelPx) {
+        val t = animationProgress.coerceIn(0f, 1f)
+        // От 0 до -miniPlayerTravelPx (двигаем вверх)
+        -(miniPlayerTravelPx * t)
+    }
 
     Box(
         modifier = modifier

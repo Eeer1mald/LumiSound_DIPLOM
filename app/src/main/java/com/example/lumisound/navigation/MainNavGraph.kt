@@ -147,22 +147,34 @@ fun MainNavGraph(
             navController = navController,
             startDestination = startDestination
         ) {
-        // Единственная точка входа для всех вкладок — SwipeableNavHost с HorizontalPager
-        // Все 4 вкладки живут внутри одного composable, навигация между ними через pager
-        composable(
+        // Основные вкладки с swipe navigation и mini player
+        addTabDestination(
             route = MainDestination.Home.route,
-            enterTransition = { EnterTransition.None },
-            exitTransition = { ExitTransition.None },
-            popEnterTransition = { EnterTransition.None },
-            popExitTransition = { ExitTransition.None }
-        ) {
-            SwipeableNavHost(
-                navController = navController,
-                currentRoute = "home",
-                userName = userName,
-                onNavigate = { route -> navController.navigate(route) }
-            )
-        }
+            currentRoute = "home",
+            navController = navController,
+            userName = userName
+        )
+        
+        addTabDestination(
+            route = MainDestination.Search.route,
+            currentRoute = "search",
+            navController = navController,
+            userName = userName
+        )
+        
+        addTabDestination(
+            route = MainDestination.Ratings.route,
+            currentRoute = "ratings",
+            navController = navController,
+            userName = userName
+        )
+        
+        addTabDestination(
+            route = MainDestination.Profile.route,
+            currentRoute = "profile",
+            navController = navController,
+            userName = userName
+        )
 
         composable(
             route = MainDestination.NowPlaying().route,
@@ -335,7 +347,30 @@ fun MainNavGraph(
     }
 }
 
-
+/**
+ * Добавляет destination для вкладки без анимаций переключения (анимация выполняется через HorizontalPager).
+ */
+private fun NavGraphBuilder.addTabDestination(
+    route: String,
+    currentRoute: String,
+    navController: NavHostController,
+    userName: String
+) {
+    composable(
+        route = route
+        // Убираем анимации - HorizontalPager сам обеспечивает плавный свайп
+        // Не указываем enterTransition и exitTransition, чтобы избежать конфликта с HorizontalPager
+        // Navigation Compose автоматически сохраняет состояние экранов в back stack
+        // ViewModel сохраняются через hiltViewModel() и не пересоздаются при возврате
+    ) {
+        SwipeableNavHost(
+            navController = navController,
+            currentRoute = currentRoute,
+            userName = userName,
+            onNavigate = { route -> navController.navigate(route) }
+        )
+    }
+}
 
 
 
