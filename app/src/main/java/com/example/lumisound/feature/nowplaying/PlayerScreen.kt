@@ -2,9 +2,7 @@ package com.example.lumisound.feature.nowplaying
 
 import android.app.Activity
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -12,25 +10,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -39,6 +33,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -55,19 +50,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
@@ -80,21 +72,22 @@ import com.example.lumisound.ui.theme.ColorSecondary
 import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun PlayerScreen(
     track: Track,
     onClose: () -> Unit = {},
-    previousRoute: String? = null, // Маршрут предыдущего экрана для показа под плеером
-    navController: androidx.navigation.NavHostController? = null, // Для отображения предыдущего экрана
-    userName: String = "Александр", // Для отображения предыдущего экрана
+    previousRoute: String? = null,
+    navController: androidx.navigation.NavHostController? = null,
+    userName: String = "Александр",
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val view = LocalView.current
     val context = LocalContext.current
-    
-    // Настройки status bar — только один раз при входе
-    androidx.compose.runtime.DisposableEffect(Unit) {
+
+    DisposableEffect(Unit) {
         if (!view.isInEditMode && context is Activity) {
             val window = context.window
             val insetsController = WindowCompat.getInsetsController(window, view)
@@ -105,27 +98,14 @@ fun PlayerScreen(
         }
         onDispose { }
     }
-    
-    // Player state для элементов управления
+
     val isPlaying by viewModel.isPlaying.collectAsState()
     val currentPosition by viewModel.currentPosition.collectAsState()
     val duration by viewModel.duration.collectAsState()
     var isLiked by remember { mutableStateOf(false) }
-    var userRating by remember { mutableIntStateOf(0) }
-    var hoveredRating by remember { mutableIntStateOf(0) }
-    
-    // Синхронизируем состояние при открытии плеера
-    LaunchedEffect(track.id) {
-        viewModel.syncPlayerState()
-    }
-    
-    // Заменён градиент на однотонный фон - используем ColorSurface для небольшого контраста
-    val backgroundSolidColor: Color = remember {
-        ColorSurface // #121212 - темно-серый для фона
-    }
 
+    LaunchedEffect(track.id) { viewModel.syncPlayerState() }
 
-    // --- Состояние и параметры для анимации закрытия свайпом вниз ---
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
@@ -135,7 +115,6 @@ fun PlayerScreen(
     var isDraggingToClose by remember { mutableStateOf(false) }
     var targetCloseProgress by remember { mutableStateOf(0f) }
 
-    // Анимированный прогресс: во время drag — прямой, после — spring
     val animatedCloseProgress by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetCloseProgress,
         animationSpec = androidx.compose.animation.core.spring(
@@ -145,25 +124,15 @@ fun PlayerScreen(
         label = "closeProgress"
     )
     val effectiveCloseProgress = if (isDraggingToClose) closeProgress else animatedCloseProgress
-
-    // Смещение и прозрачность — inline вычисления без remember
     val contentOffsetY = screenHeightPx * 0.6f * effectiveCloseProgress.coerceIn(0f, 1f)
     val contentAlpha = (1f - effectiveCloseProgress.coerceIn(0f, 1f)).coerceIn(0f, 1f)
 
     val closeScope = rememberCoroutineScope()
+    val stablePreviousRoute = remember(previousRoute) { previousRoute }
 
-    // Корневой контейнер - показываем предыдущий экран под плеером во время закрытия
-    // Используем правильное кэширование, чтобы экран не перезагружался
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-    ) {
-        // Показываем предыдущий экран под плеером во время свайпа вниз
-        // Это нужно, чтобы вместо белого фона был виден реальный экран
-        // Используем remember для стабильности previousRoute и правильное кэширование
-        val stablePreviousRoute = remember(previousRoute) { previousRoute }
-        
-        // Показываем предыдущий экран когда начинается закрытие (effectiveCloseProgress > 0.1)
+    Box(modifier = Modifier.fillMaxSize()) {
+
+        // Предыдущий экран при закрытии
         if (stablePreviousRoute != null && navController != null && effectiveCloseProgress > 0.1f) {
             Box(
                 modifier = Modifier
@@ -180,59 +149,85 @@ fun PlayerScreen(
             }
         }
 
-        // Прокручиваемое содержимое плеера как «шторка», которая выезжает снизу
+        // Основной контент плеера
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .offset(y = with(density) { contentOffsetY.toDp() })
                 .alpha(contentAlpha)
-                .background(backgroundSolidColor.copy(alpha = (1f - effectiveCloseProgress * 0.5f).coerceIn(0.5f, 1f)))
+                .background(ColorBackground.copy(alpha = (1f - effectiveCloseProgress * 0.5f).coerceIn(0.5f, 1f)))
                 .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
+                .navigationBarsPadding()
         ) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Spacer(modifier = Modifier.size(48.dp))
-                Text(
-                    text = "Сейчас играет",
-                    color = ColorSecondary,
-                    fontSize = 14.sp
-                )
-                Spacer(modifier = Modifier.size(48.dp))
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Album Cover — фиксированная высота вместо aspectRatio
+            // ── Хедер ──────────────────────────────────────────────────
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
-                    .clip(RoundedCornerShape(24.dp))
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+            ) {
+                // Кнопка закрытия — слева, выровнена по центру хедера
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .size(40.dp)
+                        .background(
+                            color = Color.White.copy(alpha = 0.08f),
+                            shape = CircleShape
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            isDraggingToClose = false
+                            targetCloseProgress = 1f
+                            closeScope.launch {
+                                delay(280)
+                                onClose()
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Close",
+                        tint = ColorOnBackground,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Заголовок — по центру
+                Text(
+                    text = "Сейчас играет",
+                    color = ColorSecondary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+
+            // ── Обложка ────────────────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 24.dp)
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(20.dp))
                     .shadow(
-                        elevation = 24.dp,
-                        shape = RoundedCornerShape(24.dp),
-                        spotColor = Color.Black.copy(alpha = 0.6f)
+                        elevation = 32.dp,
+                        shape = RoundedCornerShape(20.dp),
+                        spotColor = Color.Black.copy(alpha = 0.7f)
                     )
             ) {
-                if (track.hdImageUrl != null && track.hdImageUrl.isNotEmpty()) {
+                if (!track.hdImageUrl.isNullOrEmpty()) {
                     AsyncImage(
-                        model = ImageRequest.Builder(context).data(track.hdImageUrl).build(),
+                        model = ImageRequest.Builder(context).data(track.hdImageUrl).crossfade(false).build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
-                } else if (track.imageUrl != null && track.imageUrl.isNotEmpty()) {
+                } else if (!track.imageUrl.isNullOrEmpty()) {
                     AsyncImage(
-                        model = ImageRequest.Builder(context).data(track.imageUrl).build(),
+                        model = ImageRequest.Builder(context).data(track.imageUrl).crossfade(false).build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -248,191 +243,200 @@ fun PlayerScreen(
                             imageVector = Icons.Default.MusicNote,
                             contentDescription = null,
                             tint = GradientStart.copy(alpha = 0.4f),
-                            modifier = Modifier.size(64.dp)
+                            modifier = Modifier.size(72.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Track Info
+            // ── Нижняя панель — всегда внизу ───────────────────────────
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 20.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
-                Text(
-                    text = track.name,
-                    color = ColorOnBackground,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = track.artist ?: "",
-                    color = ColorSecondary,
-                    fontSize = 15.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
+                // Название и артист
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = track.name,
+                        color = ColorOnBackground,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2
+                    )
+                    Text(
+                        text = track.artist ?: "",
+                        color = ColorSecondary,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
 
-            Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-            // Progress Bar
-            Column(modifier = Modifier.fillMaxWidth()) {
+                // Прогресс-бар
+                val progress = if (duration > 0) {
+                    (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+                } else 0f
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp)
+                        .height(3.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(Color(0xFF1F1F1F))
+                        .background(Color.White.copy(alpha = 0.12f))
                 ) {
-                    val progress = if (duration > 0) {
-                        (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-                    } else 0f
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(progress)
-                            .height(4.dp)
-                            .background(GradientStart)
+                            .height(3.dp)
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    listOf(GradientStart, GradientEnd)
+                                )
+                            )
                     )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+
+                Spacer(modifier = Modifier.height(6.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(text = formatTime(currentPosition), color = ColorSecondary, fontSize = 12.sp)
-                    Text(text = formatTime(duration), color = ColorSecondary, fontSize = 12.sp)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Controls — гарантированно достаточно места
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Like
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { isLiked = !isLiked },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Like",
-                        tint = if (isLiked) ColorAccentSecondary else ColorSecondary,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    Text(text = formatTime(currentPosition), color = ColorSecondary, fontSize = 11.sp)
+                    Text(text = formatTime(duration), color = ColorSecondary, fontSize = 11.sp)
                 }
 
-                // Previous
-                Box(
-                    modifier = Modifier
-                        .size(60.dp)
-                        .background(color = Color(0xFF2A2A2A), shape = CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { viewModel.previousTrack() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipPrevious,
-                        contentDescription = "Previous",
-                        tint = ColorOnBackground,
-                        modifier = Modifier.size(30.dp)
-                    )
-                }
+                Spacer(modifier = Modifier.height(24.dp))
 
-                // Play/Pause
-                Box(
-                    modifier = Modifier
-                        .size(76.dp)
-                        .shadow(elevation = 20.dp, shape = CircleShape, spotColor = GradientStart.copy(alpha = 0.6f))
-                        .background(color = GradientStart, shape = CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { viewModel.togglePlayPause() },
-                    contentAlignment = Alignment.Center
+                // Кнопки управления
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(38.dp)
-                    )
-                }
+                    // Like
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { isLiked = !isLiked },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = "Like",
+                            tint = if (isLiked) GradientStart else ColorSecondary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
 
-                // Next
-                Box(
-                    modifier = Modifier
-                        .size(60.dp)
-                        .background(color = Color(0xFF2A2A2A), shape = CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { viewModel.nextTrack() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipNext,
-                        contentDescription = "Next",
-                        tint = ColorOnBackground,
-                        modifier = Modifier.size(30.dp)
-                    )
-                }
+                    // Previous — без фона, просто иконка
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { viewModel.previousTrack() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "Previous",
+                            tint = ColorOnBackground,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
 
-                // Add
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add to playlist",
-                        tint = ColorSecondary,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    // Play/Pause — большая круглая кнопка с градиентом
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .shadow(
+                                elevation = 24.dp,
+                                shape = CircleShape,
+                                spotColor = GradientStart.copy(alpha = 0.7f)
+                            )
+                            .background(
+                                brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)),
+                                shape = CircleShape
+                            )
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { viewModel.togglePlayPause() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+
+                    // Next — без фона, просто иконка
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { viewModel.nextTrack() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Next",
+                            tint = ColorOnBackground,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+
+                    // Add
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add to playlist",
+                            tint = ColorSecondary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
         }
 
-        // Невидимая широкая зона вверху для свайпа вниз, как на примере.
-        // Размещаем ЕЁ ПОСЛЕ контента и с align, чтобы она была "поверх" и ловила жесты.
-        // НО исключаем область Row с кнопкой (первые ~80dp по ширине и ~60dp по высоте), чтобы не мешать кликам
+        // Зона свайпа вниз для закрытия
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .height(180.dp)
                 .align(Alignment.TopCenter)
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onDragStart = { offset ->
-                            // Игнорируем жесты, которые начинаются в области Row с кнопкой
-                            // Row с кнопкой находится слева, примерно первые 80dp по ширине
-                            // и первые 60dp по высоте (с учетом padding и status bar)
-                            val buttonAreaWidth = with(density) { 80.dp.toPx() }
-                            val buttonAreaHeight = with(density) { 60.dp.toPx() }
-                            if (offset.x < buttonAreaWidth && offset.y < buttonAreaHeight) {
-                                return@detectVerticalDragGestures // Не обрабатываем жесты в области кнопки
-                            }
+                            val buttonAreaWidth = with(density) { 70.dp.toPx() }
+                            val buttonAreaHeight = with(density) { 80.dp.toPx() }
+                            if (offset.x < buttonAreaWidth && offset.y < buttonAreaHeight) return@detectVerticalDragGestures
                             isDraggingToClose = true
                         },
                         onDragEnd = {
@@ -446,64 +450,19 @@ fun PlayerScreen(
                             }
                         },
                         onVerticalDrag = { change, dragAmount ->
-                            // Игнорируем жесты в области Row с кнопкой
-                            val buttonAreaWidth = with(density) { 80.dp.toPx() }
-                            val buttonAreaHeight = with(density) { 60.dp.toPx() }
-                            if (change.position.x < buttonAreaWidth && change.position.y < buttonAreaHeight) {
-                                return@detectVerticalDragGestures // Не обрабатываем в области кнопки
-                            }
-                            
-                            if (dragAmount > 0) { // тянем вниз
-                                val newProgress = (closeProgress + (dragAmount / maxDragPx)).coerceIn(0f, 1f)
-                                closeProgress = newProgress
+                            val buttonAreaWidth = with(density) { 70.dp.toPx() }
+                            val buttonAreaHeight = with(density) { 80.dp.toPx() }
+                            if (change.position.x < buttonAreaWidth && change.position.y < buttonAreaHeight) return@detectVerticalDragGestures
+                            if (dragAmount > 0) {
+                                closeProgress = (closeProgress + dragAmount / maxDragPx).coerceIn(0f, 1f)
                                 change.consume()
                             } else if (dragAmount < 0 && closeProgress > 0f) {
-                                // Можно немного вернуть вверх
-                                val newProgress = (closeProgress + (dragAmount / maxDragPx)).coerceIn(0f, 1f)
-                                closeProgress = newProgress
+                                closeProgress = (closeProgress + dragAmount / maxDragPx).coerceIn(0f, 1f)
                                 change.consume()
                             }
                         }
                     )
                 }
         )
-        
-        // Кнопка стрелки размещена ОТДЕЛЬНО поверх всего, но синхронизирована с позицией контента
-        // Это позволяет ей получать клики (быть поверх зоны свайпа) и двигаться вместе с контентом
-        // Column имеет: statusBarsPadding() + padding(24.dp) + padding(vertical = 12.dp)
-        // Кнопка должна быть на той же позиции, что и в Row внутри Column
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding() // Те же отступы, что и в Column
-                // Синхронизируем offset с контентом - кнопка двигается вместе с ним
-                // Добавляем небольшой отступ вниз, чтобы кнопка была вровень с текстом "Сейчас играет"
-                .offset(
-                    x = 24.dp,
-                    y = 32.dp + with(density) { contentOffsetY.toDp() }
-                )
-                .alpha(contentAlpha)
-                .size(48.dp)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {
-                    // Анимация закрытия через spring — плавно и без delay
-                    isDraggingToClose = false
-                    targetCloseProgress = 1f
-                    closeScope.launch {
-                        delay(300) // ждём завершения spring анимации
-                        onClose()
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.ArrowDropDown,
-                contentDescription = "Close",
-                tint = ColorOnBackground,
-                modifier = Modifier.size(24.dp)
-            )
-        }
     }
 }
