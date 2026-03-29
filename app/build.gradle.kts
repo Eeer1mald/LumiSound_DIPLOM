@@ -99,8 +99,6 @@ dependencies {
     
     // uCrop for image cropping
     implementation("com.github.yalantis:ucrop:2.2.8")
-    // AppCompat для UCrop темы
-    implementation("androidx.appcompat:appcompat:1.6.1")
     
     // Accompanist Pager for carousel navigation
     implementation("com.google.accompanist:accompanist-pager:0.32.0")

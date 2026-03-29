@@ -33,9 +33,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.lumisound.R
 import com.example.lumisound.ui.theme.ColorAccentSecondary
-import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
+import com.example.lumisound.ui.theme.ColorOnBackground
 
 @Composable
 fun SearchField(
@@ -56,11 +55,11 @@ fun SearchField(
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFF1F1F1F).copy(alpha = 0.4f), // Тёмно-серый вместо 0xFF2A2D3E
+                color = Color(0xFF2A2D3E).copy(alpha = 0.4f),
                 shape = RoundedCornerShape(18.dp)
             )
             .background(
-                color = ColorSurface.copy(alpha = 0.8f), // Тёмно-серый вместо 0xFF1A1B2E
+                color = Color(0xFF1A1B2E).copy(alpha = 0.8f),
                 shape = RoundedCornerShape(18.dp)
             )
             .testTag("home_search")

@@ -1,6 +1,5 @@
 package com.example.lumisound.feature.nowplaying
 
-import android.app.Activity
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -25,7 +24,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
@@ -41,7 +39,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -56,13 +53,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -87,53 +82,9 @@ fun NowPlayingScreen(
     track: Track,
     onClose: () -> Unit,
     onNavigate: (String) -> Unit = {},
-    onArtistClick: (String, String?) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
-    viewModel: PlayerViewModel = hiltViewModel(),
-    onScrollStateChange: ((Int) -> Unit)? = null,
-    nestedScrollConnection: androidx.compose.ui.input.nestedscroll.NestedScrollConnection? = null
+    viewModel: PlayerViewModel = hiltViewModel()
 ) {
-    val view = LocalView.current
-    val context = LocalContext.current
-    
-    // КРИТИЧНО: Устанавливаем настройки status bar также в NowPlayingScreen
-    // Это гарантирует, что настройки применяются сразу при открытии плеера
-    // Используем DisposableEffect для гарантированного применения при входе
-    androidx.compose.runtime.DisposableEffect(Unit) {
-        if (!view.isInEditMode && context is Activity) {
-            val window = context.window
-            val insetsController = WindowCompat.getInsetsController(window, view)
-            
-            // Устанавливаем прозрачный фон для status bar
-            window.statusBarColor = android.graphics.Color.TRANSPARENT
-            
-            // Устанавливаем светлые иконки на темном фоне
-            insetsController.isAppearanceLightStatusBars = false
-            insetsController.isAppearanceLightNavigationBars = false
-            
-            // Гарантируем edge-to-edge
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-            
-            onDispose {
-                // Оставляем настройки при выходе
-            }
-        } else {
-            onDispose { }
-        }
-    }
-    
-    // SideEffect для применения при каждой рекомпозиции
-    SideEffect {
-        if (!view.isInEditMode && context is Activity) {
-            val window = context.window
-            val insetsController = WindowCompat.getInsetsController(window, view)
-            
-            window.statusBarColor = android.graphics.Color.TRANSPARENT
-            insetsController.isAppearanceLightStatusBars = false
-            insetsController.isAppearanceLightNavigationBars = false
-        }
-    }
-    
     val isPlaying by viewModel.isPlaying.collectAsState()
     val currentPosition by viewModel.currentPosition.collectAsState()
     val duration by viewModel.duration.collectAsState()
@@ -141,38 +92,28 @@ fun NowPlayingScreen(
     var userRating by remember { mutableIntStateOf(0) }
     var hoveredRating by remember { mutableIntStateOf(0) }
     
-    // Синхронизируем состояние при открытии плеера, но не перезапускаем трек
     LaunchedEffect(track.id) {
-        viewModel.syncPlayerState()
+        viewModel.playTrack(track)
     }
 
-    // Оптимизация: используем remember для градиента и scrollState
-    val backgroundGradient = remember {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color(0xFF1A1B2E),
-                ColorBackground,
-                ColorBackground
-            )
-        )
-    }
-    val scrollState = rememberScrollState()
-    
-    // Отслеживаем изменения scrollState и передаем их в родительский компонент
-    LaunchedEffect(scrollState.value) {
-        onScrollStateChange?.invoke(scrollState.value)
-    }
-    
     Box(
         modifier = modifier
             .fillMaxSize()
             .statusBarsPadding() // Отступ для статус-бара
-            .background(brush = backgroundGradient)
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF1A1B2E),
+                        ColorBackground,
+                        ColorBackground
+                    )
+                )
+            )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scrollState)
+                .verticalScroll(rememberScrollState())
                 .padding(bottom = 80.dp)
         ) {
             // Header
@@ -216,7 +157,7 @@ fun NowPlayingScreen(
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(track.hdImageUrl)
-                            .crossfade(false) // Отключено для лучшей производительности
+                            .crossfade(true)
                             .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
@@ -226,22 +167,21 @@ fun NowPlayingScreen(
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(track.imageUrl)
-                            .crossfade(false) // Отключено для лучшей производительности
+                            .crossfade(true)
                             .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
                 } else {
-                    val placeholderGradient = remember {
-                        Brush.linearGradient(
-                            colors = listOf(Color(0xFF1A1B2E), Color(0xFF16182A))
-                        )
-                    }
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(brush = placeholderGradient),
+                            .background(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(Color(0xFF1A1B2E), Color(0xFF16182A))
+                                )
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -252,18 +192,17 @@ fun NowPlayingScreen(
                         )
                     }
                 }
-                val overlayGradient = remember {
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            ColorBackground.copy(alpha = 0.4f)
-                        )
-                    )
-                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(brush = overlayGradient)
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    ColorBackground.copy(alpha = 0.4f)
+                                )
+                            )
+                        )
                 )
             }
 
@@ -286,10 +225,7 @@ fun NowPlayingScreen(
                     text = track.artist,
                     color = ColorSecondary,
                     fontSize = 16.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.clickable {
-                        onArtistClick(track.artist, track.artistImageUrl)
-                    }
+                    textAlign = TextAlign.Center
                 )
             }
 
@@ -389,16 +325,13 @@ fun NowPlayingScreen(
 
                 Spacer(modifier = Modifier.weight(0.5f))
 
-                val playButtonGradient = remember {
-                    Brush.linearGradient(
-                        colors = listOf(GradientStart, GradientEnd)
-                    )
-                }
                 Box(
                     modifier = Modifier
                         .size(80.dp)
                         .background(
-                            brush = playButtonGradient,
+                            brush = Brush.linearGradient(
+                                colors = listOf(GradientStart, GradientEnd)
+                            ),
                             shape = CircleShape
                         )
                         .shadow(
@@ -452,20 +385,17 @@ fun NowPlayingScreen(
             Spacer(modifier = Modifier.height(32.dp))
 
             // Rating Section
-            val ratingSectionGradient = remember {
-                Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF1A1B2E).copy(alpha = 0.8f),
-                        Color(0xFF16182A).copy(alpha = 0.8f)
-                    )
-                )
-            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
                     .background(
-                        brush = ratingSectionGradient,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF1A1B2E).copy(alpha = 0.8f),
+                                Color(0xFF16182A).copy(alpha = 0.8f)
+                            )
+                        ),
                         shape = RoundedCornerShape(20.dp)
                     )
                     .border(
@@ -505,19 +435,17 @@ fun NowPlayingScreen(
                                 modifier = Modifier
                                     .size(width = 32.dp, height = 48.dp)
                                     .background(
-                                        brush = remember(shouldHighlight) {
-                                            if (shouldHighlight) {
-                                                Brush.linearGradient(
-                                                    colors = listOf(GradientStart, GradientEnd)
+                                        brush = if (shouldHighlight) {
+                                            Brush.linearGradient(
+                                                colors = listOf(GradientStart, GradientEnd)
+                                            )
+                                        } else {
+                                            Brush.linearGradient(
+                                                colors = listOf(
+                                                    Color(0xFF1A1B2E),
+                                                    Color(0xFF1A1B2E)
                                                 )
-                                            } else {
-                                                Brush.linearGradient(
-                                                    colors = listOf(
-                                                        Color(0xFF1A1B2E),
-                                                        Color(0xFF1A1B2E)
-                                                    )
-                                                )
-                                            }
+                                            )
                                         },
                                         shape = RoundedCornerShape(8.dp)
                                     )
@@ -564,6 +492,15 @@ fun NowPlayingScreen(
                 }
             }
         }
+
+        // Bottom Navigation - с отступом для системной навигации
+        BottomNavigationBar(
+            currentRoute = "home",
+            onNavigate = onNavigate,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding() // Отступ для системной навигации
+        )
     }
 }
 

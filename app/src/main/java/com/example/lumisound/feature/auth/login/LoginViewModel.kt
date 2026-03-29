@@ -210,13 +210,11 @@ class LoginViewModel @Inject constructor(
             }
 
             is LoginUiAction.GoToRegister -> {
-                // TODO: Реализовать навигацию к экрану регистрации через side effect
-                // Навигация должна обрабатываться в UI слое через sideEffect flow
+                // TODO: Навигация
             }
 
             is LoginUiAction.GoToForgot -> {
-                // TODO: Реализовать навигацию к экрану восстановления пароля через side effect
-                // Навигация должна обрабатываться в UI слое через sideEffect flow
+                // TODO: Навигация
             }
         }
     }

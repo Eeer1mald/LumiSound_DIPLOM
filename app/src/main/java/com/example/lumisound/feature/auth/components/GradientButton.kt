@@ -55,22 +55,11 @@ fun GradientButton(
         label = "button_scale"
     )
 
-    // Оптимизация: используем remember для градиента
-    val gradient = remember {
-        Brush.linearGradient(
-            colors = listOf(GradientStart, GradientEnd),
-            start = androidx.compose.ui.geometry.Offset(0f, 0f),
-            end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, 0f)
-        )
-    }
-    val disabledGradient = remember {
-        Brush.horizontalGradient(
-            colors = listOf(
-                androidx.compose.ui.graphics.Color(0xFF7B6DFF).copy(alpha = 0.5f),
-                androidx.compose.ui.graphics.Color(0xFFFF5C6C).copy(alpha = 0.5f)
-            )
-        )
-    }
+    val gradient = Brush.linearGradient(
+        colors = listOf(GradientStart, GradientEnd),
+        start = androidx.compose.ui.geometry.Offset(0f, 0f),
+        end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, 0f)
+    )
 
     Box(
         modifier = modifier
@@ -78,7 +67,12 @@ fun GradientButton(
             .height(56.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(
-                brush = if (enabled) gradient else disabledGradient
+                if (enabled) gradient else Brush.horizontalGradient(
+                    colors = listOf(
+                        androidx.compose.ui.graphics.Color(0xFF7B6DFF).copy(alpha = 0.5f),
+                        androidx.compose.ui.graphics.Color(0xFFFF5C6C).copy(alpha = 0.5f)
+                    )
+                )
             )
             .scale(scale)
             .clickable(

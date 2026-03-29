@@ -94,46 +94,4 @@ class AuthRepositoryImpl @Inject constructor(
             supabase.uploadAvatar(accessToken = accessToken, userId = userId, fileBytes = fileBytes, fileName = fileName)
         }
     }
-    
-    override suspend fun getProfile(accessToken: String): Result<SupabaseService.ProfileResponse?> {
-        return runCatching {
-            supabase.getProfile(accessToken)
-        }
-    }
-    
-    override suspend fun getFavoriteTracks(accessToken: String, limit: Int, orderByPlayCount: Boolean): Result<List<SupabaseService.FavoriteTrackResponse>> {
-        return runCatching {
-            supabase.getFavoriteTracks(accessToken, limit, orderByPlayCount)
-        }
-    }
-    
-    override suspend fun addFavoriteTrack(accessToken: String, track: SupabaseService.FavoriteTrackInsert): Result<Unit> {
-        return supabase.addFavoriteTrack(accessToken, track)
-    }
-    
-    override suspend fun removeFavoriteTrack(accessToken: String, trackId: String): Result<Unit> {
-        return supabase.removeFavoriteTrack(accessToken, trackId)
-    }
-    
-    override suspend fun getFavoriteArtists(accessToken: String, limit: Int): Result<List<SupabaseService.FavoriteArtistResponse>> {
-        return runCatching {
-            supabase.getFavoriteArtists(accessToken, limit)
-        }
-    }
-    
-    override suspend fun addFavoriteArtist(accessToken: String, artist: SupabaseService.FavoriteArtistInsert): Result<Unit> {
-        return supabase.addFavoriteArtist(accessToken, artist)
-    }
-    
-    override suspend fun addTrackHistory(accessToken: String, track: SupabaseService.TrackHistoryInsert): Result<Unit> {
-        return supabase.addTrackHistory(accessToken, track)
-    }
-    
-    override suspend fun incrementTrackPlayCount(accessToken: String, trackId: String, trackTitle: String, trackArtist: String, trackCoverUrl: String?, trackPreviewUrl: String?): Result<Unit> {
-        return supabase.incrementTrackPlayCount(accessToken, trackId, trackTitle, trackArtist, trackCoverUrl, trackPreviewUrl)
-    }
-    
-    override suspend fun incrementArtistPlayCount(accessToken: String, artistId: String, artistName: String, artistImageUrl: String?): Result<Unit> {
-        return supabase.incrementArtistPlayCount(accessToken, artistId, artistName, artistImageUrl)
-    }
 }

@@ -2,14 +2,13 @@ package com.example.lumisound.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// LumiSound Brand Palette (Premium Dark Theme - Monochrome Black)
-// Основной фон: чистый черный или очень темно-серый
-val ColorBackground = Color(0xFF000000) // #000000 - чистый черный
+// LumiSound Brand Palette (Premium Dark Theme - Figma Design)
+// Основной фон: тёмный индиго
+val ColorBackground = Color(0xFF0F1020)
 
-// Основной акцент (кнопки): однотонный акцентный цвет (ранее был градиент)
-// Используем средний цвет из градиента #7B6DFF → #FF5C6C для единообразия
-val GradientStart = Color(0xFFB93FD9)  // Средний между фиолетовым и коралловым (для совместимости)
-val GradientEnd = Color(0xFFB93FD9)    // Тот же цвет вместо градиента
+// Основной акцент (кнопки): градиент #7B6DFF → #FF5C6C
+val GradientStart = Color(0xFF7B6DFF)  // Фиолетовый
+val GradientEnd = Color(0xFFFF5C6C)    // Коралловый
 
 // Основной текст
 val ColorOnBackground = Color(0xFFE6E6EB)
@@ -19,12 +18,12 @@ val ColorOnPrimary = Color(0xFFFFFFFF)
 val ColorSecondary = Color(0xFF9A9AB0)
 val ColorOnSurface = Color(0xFF9A9AB0)
 
-// Акценты (сохраняем для кнопок, но используем однотонный)
-val ColorPrimary = Color(0xFFB93FD9)  // Средний акцентный цвет
-val ColorAccentSecondary = Color(0xFFB93FD9)  // Тот же для единообразия
+// Акценты
+val ColorPrimary = GradientStart
+val ColorAccentSecondary = GradientEnd
 
-// Поверхности (темные карточки) - немного светлее основного фона
-val ColorSurface = Color(0xFF121212) // #121212 - темно-серый для карточек
+// Поверхности (темные карточки)
+val ColorSurface = Color(0xFF1A1B2E)
 
 // Error colors
 val ColorError = Color(0xFFFF5C6C)

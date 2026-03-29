@@ -6,13 +6,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -51,11 +49,10 @@ fun TopAppBar(
             .height(56.dp)
             .padding(horizontal = 0.dp)
     ) {
-        // Logo - соотношение сторон 928:130 (примерно 7.14:1), в 2 раза меньше
+        // Logo - увеличен в 4 раза от оригинала
         Box(
             modifier = Modifier
-                .width(140.dp)
-                .aspectRatio(928f / 130f)
+                .size(400.dp, 112.dp) // Увеличено еще в 2 раза: было 200x56, стало 400x112
                 .align(Alignment.CenterStart)
                 .padding(start = 16.dp)
         ) {
@@ -69,7 +66,7 @@ fun TopAppBar(
                 Text(
                     text = stringResource(R.string.app_name),
                     color = ColorOnBackground,
-                    fontSize = 20.sp,
+                    fontSize = 64.sp, // Увеличено еще в 2 раза
                     fontWeight = FontWeight.Bold
                 )
             }

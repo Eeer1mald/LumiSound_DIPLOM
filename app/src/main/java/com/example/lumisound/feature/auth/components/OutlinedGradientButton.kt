@@ -38,10 +38,7 @@ fun OutlinedGradientButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    // Оптимизация: используем remember для градиента
-    val gradient = remember {
-        Brush.linearGradient(listOf(GradientStart, GradientEnd))
-    }
+    val gradient = Brush.linearGradient(listOf(GradientStart, GradientEnd))
     val scale = if (isPressed && enabled) 0.98f else 1f
     val shape = RoundedCornerShape(24.dp)
 

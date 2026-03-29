@@ -10,7 +10,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.lumisound.feature.auth.login.LoginScreen
-import com.example.lumisound.feature.auth.navigation.AuthDestination
 import com.example.lumisound.feature.auth.profilesetup.ProfileSetupScreen
 import com.example.lumisound.feature.auth.register.RegisterScreen
 import com.example.lumisound.feature.auth.register.VerifyEmailScreen
@@ -65,17 +64,13 @@ private fun NavGraphBuilder.addLoginDestination(navController: NavHostController
         LoginScreen(
             onNavigateToHome = {
                 navController.navigate("home") {
-                    popUpTo(AuthDestination.Welcome.route) {
-                        this.inclusive = true
-                    }
+                    popUpTo(AuthDestination.Welcome.route) { inclusive = true }
                     launchSingleTop = true
                 }
             },
             onNavigateToProfileSetup = {
                 navController.navigate(AuthDestination.ProfileSetup.route) {
-                    popUpTo(AuthDestination.Welcome.route) {
-                        this.inclusive = false
-                    }
+                    popUpTo(AuthDestination.Welcome.route) { inclusive = false }
                     launchSingleTop = true
                 }
             },
@@ -84,8 +79,7 @@ private fun NavGraphBuilder.addLoginDestination(navController: NavHostController
                     launchSingleTop = true
                 }
             },
-            // TODO: Реализовать экран восстановления пароля
-            onNavigateToForgot = { /* TODO: Forgot password flow - создать ForgotPasswordScreen */ }
+            onNavigateToForgot = { /* TODO: Forgot password flow */ }
         )
     }
 }
@@ -100,33 +94,25 @@ private fun NavGraphBuilder.addRegisterDestination(navController: NavHostControl
             onNavigateBack = { navController.popBackStack() },
             onNavigateToLogin = {
                 navController.navigate(AuthDestination.Login.route) {
-                    popUpTo(AuthDestination.Welcome.route) {
-                        this.inclusive = false
-                    }
+                    popUpTo(AuthDestination.Welcome.route) { inclusive = false }
                     launchSingleTop = true
                 }
             },
             onNavigateToHome = {
                 navController.navigate("home") {
-                    popUpTo(AuthDestination.Welcome.route) {
-                        this.inclusive = true
-                    }
+                    popUpTo(AuthDestination.Welcome.route) { inclusive = true }
                     launchSingleTop = true
                 }
             },
             onNavigateToProfileSetup = {
                 navController.navigate(AuthDestination.ProfileSetup.route) {
-                    popUpTo(AuthDestination.Welcome.route) {
-                        this.inclusive = false
-                    }
+                    popUpTo(AuthDestination.Welcome.route) { inclusive = false }
                     launchSingleTop = true
                 }
             },
             onNavigateToVerifyEmail = {
                 navController.navigate(AuthDestination.VerifyEmail.route) {
-                    popUpTo(AuthDestination.Welcome.route) {
-                        this.inclusive = false
-                    }
+                    popUpTo(AuthDestination.Welcome.route) { inclusive = false }
                     launchSingleTop = true
                 }
             }
@@ -143,17 +129,13 @@ private fun NavGraphBuilder.addVerifyEmailDestination(navController: NavHostCont
         VerifyEmailScreen(
             onNavigateToLogin = {
                 navController.navigate(AuthDestination.Login.route) {
-                    popUpTo(AuthDestination.Welcome.route) {
-                        this.inclusive = false
-                    }
+                    popUpTo(AuthDestination.Welcome.route) { inclusive = false }
                     launchSingleTop = true
                 }
             },
             onNavigateToProfileSetup = {
                 navController.navigate(AuthDestination.ProfileSetup.route) {
-                    popUpTo(AuthDestination.Welcome.route) {
-                        this.inclusive = false
-                    }
+                    popUpTo(AuthDestination.Welcome.route) { inclusive = false }
                     launchSingleTop = true
                 }
             }
@@ -170,9 +152,7 @@ private fun NavGraphBuilder.addProfileSetupDestination(navController: NavHostCon
         ProfileSetupScreen(
             onNavigateToHome = {
                 navController.navigate("home") {
-                    popUpTo(AuthDestination.Welcome.route) {
-                        inclusive = true
-                    }
+                    popUpTo(AuthDestination.Welcome.route) { inclusive = true }
                     launchSingleTop = true
                 }
             }

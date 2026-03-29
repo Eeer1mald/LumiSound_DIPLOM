@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,7 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -39,7 +38,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -60,12 +58,10 @@ import com.example.lumisound.feature.search.getPlayerStateHolder
 import com.example.lumisound.feature.home.TrackPreview
 import com.example.lumisound.feature.home.components.SearchField
 import com.example.lumisound.feature.home.components.TopAppBar
-import com.example.lumisound.feature.nowplaying.PlayerViewModel
 import com.example.lumisound.ui.theme.ColorAccentSecondary
 import com.example.lumisound.ui.theme.ColorBackground
 import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
 import kotlinx.coroutines.delay
@@ -80,12 +76,10 @@ fun SearchScreen(
     navController: NavHostController,
     trendingTracks: List<TrackPreview> = emptyList(),
     onTrackClick: (String) -> Unit = {},
-    viewModel: SearchViewModel = hiltViewModel(),
-    playerViewModel: PlayerViewModel = hiltViewModel()
+    viewModel: SearchViewModel = hiltViewModel()
 ) {
-    // Используем rememberSaveable для сохранения поискового запроса при пересоздании страницы
-    var searchQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
-    var activeFilter by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("all") }
+    var searchQuery by remember { mutableStateOf("") }
+    var activeFilter by remember { mutableStateOf("all") }
     
     val searchResults by viewModel.searchResults.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -164,11 +158,7 @@ fun SearchScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(
-                    items = filters,
-                    key = { it.first },
-                    contentType = { _ -> "filter_chip" } // Оптимизация для LazyRow
-                ) { (id, label) ->
+                items(filters) { (id, label) ->
                     FilterChip(
                         text = label,
                         isSelected = activeFilter == id,
@@ -179,16 +169,10 @@ fun SearchScreen(
 
             // Content
             if (searchQuery.isEmpty()) {
-                // Оптимизация scrollState с graphicsLayer для 120Hz
-                val scrollState = rememberScrollState()
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer {
-                            // Кешируем графический слой для ускорения скролла на 120Hz
-                            compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
-                        }
-                        .verticalScroll(scrollState)
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     // Trending Section
@@ -198,7 +182,7 @@ fun SearchScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.TrendingUp,
+                                imageVector = Icons.Default.TrendingUp,
                                 contentDescription = null,
                                 tint = ColorAccentSecondary,
                                 modifier = Modifier.size(20.dp)
@@ -216,18 +200,7 @@ fun SearchScreen(
                             TrendingTrackItem(
                                 track = track,
                                 rank = index + 1,
-                                onClick = { 
-                                    // Запускаем трек без навигации в плеер
-                                    val trackModel = Track(
-                                        id = track.id,
-                                        name = track.title,
-                                        artist = track.artist,
-                                        imageUrl = track.coverUrl,
-                                        previewUrl = null,
-                                        genre = null
-                                    )
-                                    playerViewModel.playTrack(trackModel)
-                                },
+                                onClick = { onTrackClick(track.id) },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(bottom = 8.dp)
@@ -340,22 +313,17 @@ fun SearchScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(vertical = 8.dp)
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            itemsIndexed(
-                                items = searchResults,
-                                key = { _, track -> track.id },
-                                contentType = { _, _ -> "search_result_track" } // Оптимизация для LazyColumn
-                            ) { index, track ->
+                            itemsIndexed(searchResults) { index, track ->
                                 SearchResultTrackItem(
                                     track = track,
                                     onClick = { 
                                         // Устанавливаем плейлист из результатов поиска
                                         val allTracks = searchResults.toList()
                                         playerStateHolder.setPlaylist(allTracks, index)
-                                        // Запускаем трек без навигации в плеер
-                                        playerViewModel.playTrack(track)
+                                        // Навигируем к NowPlaying
+                                        navController.navigate("now_playing/${track.id}")
                                     }
                                 )
                             }
@@ -379,16 +347,23 @@ private fun FilterChip(
     Box(
         modifier = modifier
             .background(
-                color = if (isSelected) {
-                    GradientStart // Однотонный акцентный цвет вместо градиента
+                brush = if (isSelected) {
+                    Brush.horizontalGradient(
+                        colors = listOf(GradientStart, GradientEnd)
+                    )
                 } else {
-                    ColorSurface // Тёмно-серый вместо 0xFF1A1B2E
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF1A1B2E),
+                            Color(0xFF1A1B2E)
+                        )
+                    )
                 },
                 shape = RoundedCornerShape(20.dp)
             )
             .border(
                 width = if (isSelected) 0.dp else 1.dp,
-                color = Color(0xFF1F1F1F).copy(alpha = 0.4f), // Тёмно-серый вместо 0xFF2A2D3E
+                color = Color(0xFF2A2D3E).copy(alpha = 0.4f),
                 shape = RoundedCornerShape(20.dp)
             )
             .shadow(
@@ -415,26 +390,20 @@ private fun TrendingTrackItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Заменены градиенты на однотонные цвета
-    val trackItemColor = remember {
-        ColorSurface.copy(alpha = 0.8f) // Тёмно-серый вместо градиента
-    }
-    val rankColor = remember(rank) {
-        if (rank <= 3) {
-            GradientStart // Однотонный акцентный цвет
-        } else {
-            ColorSurface // Тёмно-серый
-        }
-    }
     Box(
         modifier = modifier
             .background(
-                color = trackItemColor,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF1A1B2E).copy(alpha = 0.8f),
+                        Color(0xFF16182A).copy(alpha = 0.8f)
+                    )
+                ),
                 shape = RoundedCornerShape(12.dp)
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
+                color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
                 shape = RoundedCornerShape(12.dp)
             )
             .clickable(onClick = onClick)
@@ -450,7 +419,18 @@ private fun TrendingTrackItem(
                 modifier = Modifier
                     .size(32.dp)
                     .background(
-                        color = rankColor,
+                        brush = if (rank <= 3) {
+                            Brush.linearGradient(
+                                colors = listOf(GradientStart, GradientEnd)
+                            )
+                        } else {
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFF1A1B2E),
+                                    Color(0xFF1A1B2E)
+                                )
+                            )
+                        },
                         shape = RoundedCornerShape(8.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -467,13 +447,20 @@ private fun TrendingTrackItem(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(ColorSurface) // Тёмно-серый вместо градиента
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF1A1B2E),
+                                Color(0xFF16182A)
+                            )
+                        )
+                    )
             ) {
                 if (track.coverUrl != null && track.coverUrl.isNotEmpty()) {
                     SubcomposeAsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(track.coverUrl)
-                            .crossfade(false) // Отключено для лучшей производительности
+                            .crossfade(true)
                             .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
@@ -539,16 +526,13 @@ private fun GenreCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Заменён градиент на однотонный цвет - используем средний цвет или ColorSurface
-    val genreColor = remember(genre.gradient) {
-        // Используем первый цвет градиента или ColorSurface как однотонный вариант
-        ColorSurface // Тёмно-серый вместо градиента жанра
-    }
     Box(
         modifier = modifier
             .height(96.dp)
             .background(
-                color = genreColor,
+                brush = Brush.linearGradient(
+                    colors = listOf(genre.gradient.first, genre.gradient.second)
+                ),
                 shape = RoundedCornerShape(12.dp)
             )
             .clickable(onClick = onClick)
@@ -583,23 +567,21 @@ private fun SearchResultTrackItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Заменены градиенты на однотонные цвета
-    val trackItemColor = remember {
-        ColorSurface.copy(alpha = 0.8f) // Тёмно-серый вместо градиента
-    }
-    val coverColor = remember {
-        ColorSurface // Тёмно-серый для обложки
-    }
     Box(
         modifier = modifier
             .fillMaxWidth()
             .background(
-                color = trackItemColor,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF1A1B2E).copy(alpha = 0.8f),
+                        Color(0xFF16182A).copy(alpha = 0.8f)
+                    )
+                ),
                 shape = RoundedCornerShape(12.dp)
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFF1F1F1F).copy(alpha = 0.3f), // Тёмно-серый вместо 0xFF2A2D3E
+                color = Color(0xFF2A2D3E).copy(alpha = 0.3f),
                 shape = RoundedCornerShape(12.dp)
             )
             .clickable(onClick = onClick)
@@ -615,13 +597,20 @@ private fun SearchResultTrackItem(
                 modifier = Modifier
                     .size(56.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(color = coverColor) // Однотонный цвет вместо градиента
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF1A1B2E),
+                                Color(0xFF16182A)
+                            )
+                        )
+                    )
             ) {
                 if (track.imageUrl != null && track.imageUrl.isNotEmpty()) {
                     SubcomposeAsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(track.imageUrl)
-                            .crossfade(false) // Отключено для лучшей производительности
+                            .crossfade(true)
                             .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),

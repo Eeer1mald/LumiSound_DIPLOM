@@ -11,10 +11,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-/**
- * DI модуль для приложения.
- * Предоставляет зависимости уровня приложения (singleton).
- */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class AppModule {
@@ -24,15 +20,13 @@ abstract class AppModule {
     abstract fun bindAuthRepository(
         authRepositoryImpl: AuthRepositoryImpl
     ): AuthRepository
+}
 
-    companion object {
-        /**
-         * Предоставляет Context приложения.
-         * Обычно Context доступен через @ApplicationContext напрямую,
-         * но этот провайдер может быть полезен для явной инъекции.
-         */
-        @Provides
-        @Singleton
-        fun provideContext(@ApplicationContext context: Context): Context = context
-    }
+@Module
+@InstallIn(SingletonComponent::class)
+object ContextModule {
+    
+    @Provides
+    @Singleton
+    fun provideContext(@ApplicationContext context: Context): Context = context
 }
