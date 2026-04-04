@@ -60,6 +60,17 @@ sealed class MainDestination(val route: String) {
     data object Ratings : MainDestination("ratings")
     data object Profile : MainDestination("profile")
     data object Settings : MainDestination("settings")
+    data class PublicProfile(
+        val userId: String = "{userId}",
+        val username: String = "{username}",
+        val avatarUrl: String = "{avatarUrl}"
+    ) : MainDestination("public_profile/{userId}/{username}/{avatarUrl}") {
+        fun createRoute(userId: String, username: String, avatarUrl: String?): String {
+            val encodedUser = java.net.URLEncoder.encode(username, "UTF-8")
+            val encodedAvatar = java.net.URLEncoder.encode(avatarUrl ?: "", "UTF-8")
+            return "public_profile/$userId/$encodedUser/$encodedAvatar"
+        }
+    }
     data class Review(val trackId: String = "{trackId}") : MainDestination("review/{trackId}") {
         fun createRoute(trackId: String) = "review/$trackId"
     }
@@ -356,8 +367,32 @@ fun MainNavGraph(
             enterTransition = { fadeIn(animationSpec = tween(200)) },
             exitTransition = { fadeOut(animationSpec = tween(200)) }
         ) {
-            SettingsScreen(
-                onBack = { navController.popBackStack() }
+            SettingsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(
+            route = MainDestination.PublicProfile().route,
+            arguments = listOf(
+                navArgument("userId") { type = NavType.StringType },
+                navArgument("username") { type = NavType.StringType },
+                navArgument("avatarUrl") { type = NavType.StringType }
+            ),
+            enterTransition = { fadeIn(animationSpec = tween(250)) },
+            exitTransition = { fadeOut(animationSpec = tween(200)) }
+        ) { backStackEntry ->
+            val userId = backStackEntry.arguments?.getString("userId") ?: ""
+            val username = backStackEntry.arguments?.getString("username")?.let {
+                java.net.URLDecoder.decode(it, "UTF-8")
+            } ?: ""
+            val avatarUrl = backStackEntry.arguments?.getString("avatarUrl")?.let {
+                val decoded = java.net.URLDecoder.decode(it, "UTF-8")
+                if (decoded.isEmpty()) null else decoded
+            }
+            com.example.lumisound.feature.profile.PublicProfileScreen(
+                userId = userId,
+                username = username,
+                avatarUrl = avatarUrl,
+                onClose = { navController.popBackStack() }
             )
         }
 
@@ -375,7 +410,8 @@ fun MainNavGraph(
                     onClose = { navController.popBackStack() },
                     onOpenReviews = {
                         navController.navigate(MainDestination.Reviews().createRoute(track.id))
-                    }
+                    },
+                    navController = navController
                 )
             } else {
                 navController.popBackStack()
@@ -406,8 +442,8 @@ fun MainNavGraph(
         val currentRoute = navBackStackEntry?.destination?.route
         val isOnFullPlayer = currentRoute?.startsWith("now_playing") == true
         val isOnMainTabs = currentRoute == "home"
-        // Показываем только на экранах артиста, настроек и тд — не на главных вкладках
-        if (globalCurrentTrack != null && !isOnFullPlayer && !isOnMainTabs) {
+        val isOnReviewScreen = currentRoute?.startsWith("review") == true
+        if (globalCurrentTrack != null && !isOnFullPlayer && !isOnMainTabs && !isOnReviewScreen) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)

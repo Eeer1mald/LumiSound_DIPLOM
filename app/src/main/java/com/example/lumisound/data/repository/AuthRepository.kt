@@ -15,6 +15,7 @@ interface AuthRepository {
     suspend fun saveProfile(accessToken: String, username: String, email: String, bio: String?, favoriteGenre: String?, avatarUrl: String?): Result<Unit>
     fun getUserId(): String?
     suspend fun uploadAvatar(accessToken: String, userId: String, fileBytes: ByteArray, fileName: String): Result<String>
+    suspend fun deleteAvatarByUrl(accessToken: String, avatarUrl: String): Result<Unit>
     suspend fun getProfile(accessToken: String): Result<SupabaseService.ProfileResponse?>
     
     // Favorite Tracks
@@ -37,11 +38,17 @@ interface AuthRepository {
     suspend fun upsertTrackRating(accessToken: String, rating: SupabaseService.TrackRatingInsert): Result<SupabaseService.TrackRatingResponse>
     suspend fun getMyTrackRating(accessToken: String, audiusTrackId: String): SupabaseService.TrackRatingResponse?
     suspend fun getMyRatings(accessToken: String, limit: Int = 50): List<SupabaseService.TrackRatingResponse>
+    suspend fun getTrackAverageRating(accessToken: String, audiusTrackId: String): SupabaseService.TrackAverageRating?
 
     // Track Comments
     suspend fun addTrackComment(accessToken: String, comment: SupabaseService.TrackCommentInsert): Result<SupabaseService.TrackCommentResponse>
     suspend fun getTrackComments(accessToken: String, audiusTrackId: String): List<SupabaseService.TrackCommentResponse>
     suspend fun getMyComments(accessToken: String, limit: Int = 50): List<SupabaseService.TrackCommentResponse>
     suspend fun deleteTrackComment(accessToken: String, commentId: String): Result<Unit>
+
+    // Review votes
+    suspend fun getTrackReviews(accessToken: String, audiusTrackId: String): List<SupabaseService.TrackRatingResponse>
+    suspend fun voteReview(accessToken: String, ratingId: String, vote: Int): Result<Unit>
+    suspend fun getMyVoteForReview(accessToken: String, ratingId: String): Int?
 }
 

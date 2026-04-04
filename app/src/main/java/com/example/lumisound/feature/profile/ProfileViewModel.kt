@@ -284,7 +284,16 @@ class ProfileViewModel @Inject constructor(
                         val fileIdentifier = userId ?: email.replace("@", "_").replace(".", "_")
                         val fileName = "avatar_${fileIdentifier}_${System.currentTimeMillis()}.jpg"
                         android.util.Log.d("ProfileViewModel", "Имя файла для загрузки: $fileName")
-                        
+
+                        // Удаляем старый аватар перед загрузкой нового
+                        val oldAvatarUrl = _uiState.value.avatarUrl
+                        if (!oldAvatarUrl.isNullOrBlank() && oldAvatarUrl.contains("/avatars/")) {
+                            android.util.Log.d("ProfileViewModel", "Удаляем старый аватар: $oldAvatarUrl")
+                            authRepository.deleteAvatarByUrl(accessToken, oldAvatarUrl)
+                                .onSuccess { android.util.Log.d("ProfileViewModel", "Старый аватар удалён") }
+                                .onFailure { android.util.Log.w("ProfileViewModel", "Не удалось удалить старый аватар: ${it.message}") }
+                        }
+
                         authRepository.uploadAvatar(
                             accessToken = accessToken,
                             userId = userId ?: fileIdentifier, // Используем userId или fileIdentifier

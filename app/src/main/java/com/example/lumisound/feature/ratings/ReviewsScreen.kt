@@ -306,12 +306,20 @@ fun ReviewsScreen(
                     CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(32.dp))
                 }
             } else {
-                val reviewsToShow = listOfNotNull(state.existingRating?.takeIf { !it.review.isNullOrBlank() })
+                // Рецензии из state.reviews (все пользователи, отсортированы по репутации)
+                val reviewsToShow = state.reviews.filter { !it.review.isNullOrBlank() }
                 if (reviewsToShow.isEmpty()) {
-                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Нет рецензий", color = ColorOnBackground.copy(alpha = 0.5f), fontSize = 15.sp)
-                            Text("Нажмите карандаш, чтобы написать", color = ColorSecondary, fontSize = 13.sp)
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Нет рецензий", color = ColorOnBackground.copy(alpha = 0.5f), fontSize = 15.sp, textAlign = TextAlign.Center)
+                            Text("Нажмите карандаш, чтобы написать", color = ColorSecondary, fontSize = 13.sp, textAlign = TextAlign.Center)
                         }
                     }
                 } else {
@@ -321,7 +329,12 @@ fun ReviewsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(reviewsToShow, key = { it.id }) { rating ->
-                            ReviewCard(rating = rating)
+                            ReviewCard(
+                                rating = rating,
+                                myVote = state.myVotes[rating.id],
+                                currentUserId = state.currentUserId,
+                                onVote = { vote -> viewModel.voteReview(track.id, rating.id, vote) }
+                            )
                         }
                     }
                 }
@@ -389,7 +402,12 @@ fun ReviewsScreen(
 }
 
 @Composable
-private fun ReviewCard(rating: com.example.lumisound.data.remote.SupabaseService.TrackRatingResponse) {
+private fun ReviewCard(
+    rating: com.example.lumisound.data.remote.SupabaseService.TrackRatingResponse,
+    myVote: Int? = null,
+    currentUserId: String? = null,
+    onVote: (Int) -> Unit = {}
+) {
     val dateStr = remember(rating.createdAt) {
         try {
             val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
@@ -398,6 +416,9 @@ private fun ReviewCard(rating: com.example.lumisound.data.remote.SupabaseService
         } catch (e: Exception) { "" }
     }
 
+    val isOwn = currentUserId != null && rating.userId == currentUserId
+    val displayName = rating.username?.takeIf { it.isNotBlank() } ?: if (isOwn) "Вы" else "Пользователь"
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -405,6 +426,7 @@ private fun ReviewCard(rating: com.example.lumisound.data.remote.SupabaseService
             .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
             .padding(14.dp)
     ) {
+        // Хедер: аватар + имя + дата + оценка
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -412,13 +434,26 @@ private fun ReviewCard(rating: com.example.lumisound.data.remote.SupabaseService
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(
-                    modifier = Modifier.size(32.dp).background(ColorSurface, CircleShape),
+                    modifier = Modifier.size(32.dp).clip(CircleShape).background(ColorSurface),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(14.dp))
+                    if (!rating.userAvatarUrl.isNullOrEmpty()) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current).data(rating.userAvatarUrl).crossfade(false).build(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        androidx.compose.material3.Icon(
+                            Icons.Default.MusicNote, null,
+                            tint = ColorSecondary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
                 Column {
-                    Text("Вы", color = ColorOnBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(displayName, color = ColorOnBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Text(dateStr, color = ColorSecondary, fontSize = 11.sp)
                 }
             }
@@ -452,17 +487,12 @@ private fun ReviewCard(rating: com.example.lumisound.data.remote.SupabaseService
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(label, color = ColorSecondary, fontSize = 11.sp, modifier = Modifier.width(120.dp))
-                        // Прогресс-бар
                         Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(4.dp)
+                            modifier = Modifier.weight(1f).height(4.dp)
                                 .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(2.dp))
                         ) {
                             Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(score / 10f)
-                                    .height(4.dp)
+                                modifier = Modifier.fillMaxWidth(score / 10f).height(4.dp)
                                     .background(GradientStart, RoundedCornerShape(2.dp))
                             )
                         }
@@ -478,6 +508,65 @@ private fun ReviewCard(rating: com.example.lumisound.data.remote.SupabaseService
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
             Spacer(modifier = Modifier.height(10.dp))
             Text(review, color = ColorOnBackground, fontSize = 14.sp, lineHeight = 22.sp)
+        }
+
+        // Голосование за репутацию
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Стрелка вверх
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .background(
+                        if (myVote == 1) Color(0xFF2ECC71).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.06f),
+                        RoundedCornerShape(6.dp)
+                    )
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                        onVote(1)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("↑", color = if (myVote == 1) Color(0xFF2ECC71) else ColorSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            // Счётчик репутации
+            val repColor = when {
+                rating.reputation > 0 -> Color(0xFF2ECC71)
+                rating.reputation < 0 -> Color(0xFFE74C3C)
+                else -> ColorSecondary
+            }
+            Text(
+                "${if (rating.reputation > 0) "+" else ""}${rating.reputation}",
+                color = repColor,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.width(32.dp),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            // Стрелка вниз
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .background(
+                        if (myVote == -1) Color(0xFFE74C3C).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.06f),
+                        RoundedCornerShape(6.dp)
+                    )
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                        onVote(-1)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("↓", color = if (myVote == -1) Color(0xFFE74C3C) else ColorSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }

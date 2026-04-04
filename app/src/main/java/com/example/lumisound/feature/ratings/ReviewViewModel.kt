@@ -15,7 +15,7 @@ import javax.inject.Inject
 data class ReviewUiState(
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
-    val savedSuccess: Boolean = false,
+    val savedSuccess: Boolean = false, 
     val error: String? = null,
     val rhymeScore: Int? = null,
     val imageryScore: Int? = null,
@@ -25,8 +25,12 @@ data class ReviewUiState(
     val review: String = "",
     val commentText: String = "",
     val comments: List<SupabaseService.TrackCommentResponse> = emptyList(),
+    val reviews: List<SupabaseService.TrackRatingResponse> = emptyList(), // рецензии с репутацией
+    val myVotes: Map<String, Int> = emptyMap(), // ratingId -> vote
     val existingRating: SupabaseService.TrackRatingResponse? = null,
-    val userAvatarUrl: String? = null  // фото профиля для поля ввода
+    val averageRating: SupabaseService.TrackAverageRating? = null,
+    val userAvatarUrl: String? = null,
+    val currentUserId: String? = null
 ) {
     val overallScore: Double?
         get() {
@@ -53,11 +57,14 @@ class ReviewViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true, error = null)
             val existing = authRepository.getMyTrackRating(token, audiusTrackId)
             val comments = authRepository.getTrackComments(token, audiusTrackId)
-            // Загружаем аватар профиля
+            val reviews = authRepository.getTrackReviews(token, audiusTrackId)
             val profile = authRepository.getProfile(token).getOrNull()
+            val averageRating = authRepository.getTrackAverageRating(token, audiusTrackId)
             _state.value = _state.value.copy(
                 isLoading = false,
                 existingRating = existing,
+                averageRating = averageRating,
+                reviews = reviews,
                 rhymeScore = existing?.rhymeScore,
                 imageryScore = existing?.imageryScore,
                 structureScore = existing?.structureScore,
@@ -65,7 +72,8 @@ class ReviewViewModel @Inject constructor(
                 atmosphereScore = existing?.atmosphereScore,
                 review = existing?.review ?: "",
                 comments = comments,
-                userAvatarUrl = profile?.avatarUrl
+                userAvatarUrl = profile?.avatarUrl,
+                currentUserId = sessionManager.getUserId()
             )
         }
     }
@@ -110,10 +118,18 @@ class ReviewViewModel @Inject constructor(
                     structureScore = s.structureScore,
                     charismaScore = s.charismaScore,
                     atmosphereScore = s.atmosphereScore,
-                    review = s.review.takeIf { it.isNotBlank() }
+                    review = s.review.takeIf { it.isNotBlank() },
+                    username = authRepository.getProfile(token).getOrNull()?.username,
+                    userAvatarUrl = s.userAvatarUrl
                 )
             ).onSuccess { saved ->
-                _state.value = _state.value.copy(isSaving = false, savedSuccess = true, existingRating = saved)
+                val newAverage = authRepository.getTrackAverageRating(token, audiusTrackId)
+                _state.value = _state.value.copy(
+                    isSaving = false,
+                    savedSuccess = true,
+                    existingRating = saved,
+                    averageRating = newAverage
+                )
             }.onFailure { e ->
                 _state.value = _state.value.copy(isSaving = false, error = e.message)
             }
@@ -138,7 +154,9 @@ class ReviewViewModel @Inject constructor(
                     trackTitle = trackTitle,
                     trackArtist = trackArtist,
                     trackCoverUrl = trackCoverUrl,
-                    comment = text
+                    comment = text,
+                    username = authRepository.getProfile(token).getOrNull()?.username,
+                    userAvatarUrl = _state.value.userAvatarUrl
                 )
             ).onSuccess { newComment ->
                 _state.value = _state.value.copy(
@@ -159,6 +177,27 @@ class ReviewViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     comments = _state.value.comments.filter { it.id != commentId }
                 )
+            }
+        }
+    }
+
+    fun voteReview(audiusTrackId: String, ratingId: String, vote: Int) {
+        val token = sessionManager.getAccessToken() ?: return
+        viewModelScope.launch {
+            authRepository.voteReview(token, ratingId, vote).onSuccess {
+                // Обновляем локально
+                val currentVote = _state.value.myVotes[ratingId]
+                val newVote = if (currentVote == vote) null else vote // повторное нажатие = отмена
+                val newVotes = _state.value.myVotes.toMutableMap()
+                if (newVote == null) newVotes.remove(ratingId) else newVotes[ratingId] = newVote
+                // Пересчитываем репутацию локально
+                val reviews = _state.value.reviews.map { r ->
+                    if (r.id == ratingId) {
+                        val delta = (newVote ?: 0) - (currentVote ?: 0)
+                        r.copy(reputation = r.reputation + delta)
+                    } else r
+                }.sortedByDescending { it.reputation }
+                _state.value = _state.value.copy(myVotes = newVotes, reviews = reviews)
             }
         }
     }

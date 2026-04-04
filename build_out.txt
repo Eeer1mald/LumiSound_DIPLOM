@@ -1,4 +1,4 @@
-﻿Starting a Gradle Daemon, 2 busy and 1 incompatible and 1 stopped Daemons could not be reused, use --status for details
+﻿Starting a Gradle Daemon, 2 busy and 1 incompatible and 4 stopped Daemons could not be reused, use --status for details
 > Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preDebugBuild UP-TO-DATE
@@ -23,13 +23,13 @@
 w: Kapt currently doesn't support language version 2.0+. Falling back to 1.9.
 
 > Task :app:kaptDebugKotlin
+
 > Task :app:compileDebugKotlin
 w: file:///C:/Users/Lumirin/AndroidStudioProjects/LumiSound/app/src/main/java/com/example/lumisound/feature/nowplaying/NowPlayingScreen.kt:107:20 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///C:/Users/Lumirin/AndroidStudioProjects/LumiSound/app/src/main/java/com/example/lumisound/feature/nowplaying/PlayerScreen.kt:120:20 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///C:/Users/Lumirin/AndroidStudioProjects/LumiSound/app/src/main/java/com/example/lumisound/feature/ratings/RatingsScreen.kt:312:46 'constructor(p0: String!): Locale' is deprecated. Deprecated in Java.
-w: file:///C:/Users/Lumirin/AndroidStudioProjects/LumiSound/app/src/main/java/com/example/lumisound/feature/ratings/ReviewScreen.kt:430:39 'constructor(p0: String!): Locale' is deprecated. Deprecated in Java.
-w: file:///C:/Users/Lumirin/AndroidStudioProjects/LumiSound/app/src/main/java/com/example/lumisound/feature/ratings/ReviewsScreen.kt:397:44 'constructor(p0: String!): Locale' is deprecated. Deprecated in Java.
-w: file:///C:/Users/Lumirin/AndroidStudioProjects/LumiSound/app/src/main/java/com/example/lumisound/navigation/SwipeableNavHost.kt:232:36 Condition is always 'true'.
+w: file:///C:/Users/Lumirin/AndroidStudioProjects/LumiSound/app/src/main/java/com/example/lumisound/feature/ratings/ReviewScreen.kt:703:39 'constructor(p0: String!): Locale' is deprecated. Deprecated in Java.
+w: file:///C:/Users/Lumirin/AndroidStudioProjects/LumiSound/app/src/main/java/com/example/lumisound/feature/ratings/ReviewsScreen.kt:415:44 'constructor(p0: String!): Locale' is deprecated. Deprecated in Java.
 
-BUILD SUCCESSFUL in 1m 55s
+BUILD SUCCESSFUL in 1m 28s
 19 actionable tasks: 7 executed, 12 up-to-date

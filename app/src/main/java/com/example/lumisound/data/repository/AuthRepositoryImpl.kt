@@ -94,6 +94,10 @@ class AuthRepositoryImpl @Inject constructor(
             supabase.uploadAvatar(accessToken = accessToken, userId = userId, fileBytes = fileBytes, fileName = fileName)
         }
     }
+
+    override suspend fun deleteAvatarByUrl(accessToken: String, avatarUrl: String): Result<Unit> {
+        return supabase.deleteAvatarByUrl(accessToken, avatarUrl)
+    }
     
     override suspend fun getProfile(accessToken: String): Result<SupabaseService.ProfileResponse?> {
         return runCatching {
@@ -149,6 +153,10 @@ class AuthRepositoryImpl @Inject constructor(
         return supabase.getMyRatings(accessToken, limit)
     }
 
+    override suspend fun getTrackAverageRating(accessToken: String, audiusTrackId: String): SupabaseService.TrackAverageRating? {
+        return supabase.getTrackAverageRating(accessToken, audiusTrackId)
+    }
+
     override suspend fun addTrackComment(accessToken: String, comment: SupabaseService.TrackCommentInsert): Result<SupabaseService.TrackCommentResponse> {
         return supabase.addTrackComment(accessToken, comment)
     }
@@ -163,5 +171,17 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun deleteTrackComment(accessToken: String, commentId: String): Result<Unit> {
         return supabase.deleteTrackComment(accessToken, commentId)
+    }
+
+    override suspend fun getTrackReviews(accessToken: String, audiusTrackId: String): List<SupabaseService.TrackRatingResponse> {
+        return supabase.getTrackReviews(accessToken, audiusTrackId)
+    }
+
+    override suspend fun voteReview(accessToken: String, ratingId: String, vote: Int): Result<Unit> {
+        return supabase.voteReview(accessToken, ratingId, vote)
+    }
+
+    override suspend fun getMyVoteForReview(accessToken: String, ratingId: String): Int? {
+        return supabase.getMyVoteForReview(accessToken, ratingId)
     }
 }

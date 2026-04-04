@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,6 +54,7 @@ fun BottomNavigationBar(
         modifier = modifier
             .fillMaxWidth()
             .background(NavBarBackground)
+            .navigationBarsPadding()
             .testTag("bottom_navigation")
     ) {
         // Тонкая линия сверху
