@@ -1,12 +1,16 @@
 package com.example.lumisound.feature.nowplaying
 
 import android.app.Activity
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -38,7 +43,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -48,6 +52,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -65,7 +72,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.lumisound.data.model.Track
-import com.example.lumisound.ui.theme.ColorAccentSecondary
 import com.example.lumisound.ui.theme.ColorBackground
 import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.ColorSecondary
@@ -74,6 +80,26 @@ import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.sin
+import kotlin.random.Random
+
+// Генерируем псевдо-waveform на основе seed трека (детерминировано для одного трека)
+private fun generateWaveform(trackId: String, bars: Int = 80): List<Float> {
+    val seed = trackId.hashCode().toLong()
+    val rng = Random(seed)
+    return List(bars) {
+        // Имитируем реальный аудио-профиль: тихое начало, громкая середина, затухание
+        val pos = it.toFloat() / bars
+        val envelope = when {
+            pos < 0.1f -> pos / 0.1f * 0.6f
+            pos > 0.85f -> (1f - pos) / 0.15f * 0.5f
+            else -> 0.4f + rng.nextFloat() * 0.6f
+        }
+        // Добавляем синусоидальные волны для реалистичности
+        val wave = 0.15f * sin(pos * 20f).toFloat().coerceAtLeast(0f)
+        (envelope + wave + rng.nextFloat() * 0.15f).coerceIn(0.05f, 1f)
+    }
+}
 
 @Composable
 fun PlayerScreen(
@@ -106,6 +132,9 @@ fun PlayerScreen(
 
     LaunchedEffect(track.id) { viewModel.syncPlayerState() }
 
+    // Waveform — генерируем один раз для трека
+    val waveform = remember(track.id) { generateWaveform(track.id) }
+
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
@@ -119,7 +148,7 @@ fun PlayerScreen(
         targetValue = targetCloseProgress,
         animationSpec = androidx.compose.animation.core.spring(
             dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
         ),
         label = "closeProgress"
     )
@@ -132,8 +161,8 @@ fun PlayerScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // Предыдущий экран при закрытии
-        if (stablePreviousRoute != null && navController != null && effectiveCloseProgress > 0.1f) {
+        // Предыдущий экран — рендерим всегда для сохранения состояния
+        if (stablePreviousRoute != null && navController != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -165,15 +194,11 @@ fun PlayerScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 16.dp)
             ) {
-                // Кнопка закрытия — слева, выровнена по центру хедера
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .size(40.dp)
-                        .background(
-                            color = Color.White.copy(alpha = 0.08f),
-                            shape = CircleShape
-                        )
+                        .background(Color.White.copy(alpha = 0.08f), CircleShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -181,7 +206,7 @@ fun PlayerScreen(
                             isDraggingToClose = false
                             targetCloseProgress = 1f
                             closeScope.launch {
-                                delay(280)
+                                delay(260)
                                 onClose()
                             }
                         },
@@ -194,8 +219,6 @@ fun PlayerScreen(
                         modifier = Modifier.size(24.dp)
                     )
                 }
-
-                // Заголовок — по центру
                 Text(
                     text = "Сейчас играет",
                     color = ColorSecondary,
@@ -212,11 +235,6 @@ fun PlayerScreen(
                     .fillMaxWidth()
                     .weight(1f)
                     .clip(RoundedCornerShape(20.dp))
-                    .shadow(
-                        elevation = 32.dp,
-                        shape = RoundedCornerShape(20.dp),
-                        spotColor = Color.Black.copy(alpha = 0.7f)
-                    )
             ) {
                 if (!track.hdImageUrl.isNullOrEmpty()) {
                     AsyncImage(
@@ -234,28 +252,20 @@ fun PlayerScreen(
                     )
                 } else {
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(ColorSurface),
+                        modifier = Modifier.fillMaxSize().background(ColorSurface),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = null,
-                            tint = GradientStart.copy(alpha = 0.4f),
-                            modifier = Modifier.size(72.dp)
-                        )
+                        Icon(Icons.Default.MusicNote, null, tint = GradientStart.copy(alpha = 0.4f), modifier = Modifier.size(72.dp))
                     }
                 }
             }
 
-            // ── Нижняя панель — всегда внизу ───────────────────────────
+            // ── Нижняя панель ───────────────────────────────────────────
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    .padding(top = 20.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
+                    .padding(top = 20.dp, bottom = 24.dp)
             ) {
                 // Название и артист
                 Column(
@@ -275,62 +285,127 @@ fun PlayerScreen(
                         text = track.artist ?: "",
                         color = ColorSecondary,
                         fontSize = 14.sp,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            if (!track.artistId.isNullOrBlank()) {
+                                navController?.navigate(
+                                    com.example.lumisound.navigation.MainDestination.Artist()
+                                        .createRoute(track.artistId, track.artist ?: "", track.artistImageUrl)
+                                )
+                            }
+                        }
                     )
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Прогресс-бар
-                val progress = if (duration > 0) {
-                    (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-                } else 0f
+                // ── Waveform прогресс-бар ──────────────────────────────
+                val progress = if (duration > 0) (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
+                val inactiveColor = Color.White.copy(alpha = 0.18f)
+                val barCount = waveform.size
 
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(Color.White.copy(alpha = 0.12f))
+                        .height(56.dp)
+                        .pointerInput(duration) {
+                            detectTapGestures { offset ->
+                                if (duration > 0) {
+                                    val seekProgress = (offset.x / size.width).coerceIn(0f, 1f)
+                                    viewModel.seekTo((seekProgress * duration).toLong())
+                                }
+                            }
+                        }
+                        .pointerInput(duration) {
+                            detectHorizontalDragGestures { change, _ ->
+                                if (duration > 0) {
+                                    val seekProgress = (change.position.x / size.width).coerceIn(0f, 1f)
+                                    viewModel.seekTo((seekProgress * duration).toLong())
+                                    change.consume()
+                                }
+                            }
+                        }
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(progress)
-                            .height(3.dp)
-                            .background(
-                                brush = Brush.horizontalGradient(
-                                    listOf(GradientStart, GradientEnd)
-                                )
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val totalWidth = size.width
+                        val totalHeight = size.height
+                        val barWidth = (totalWidth / barCount) * 0.55f
+                        val gap = (totalWidth / barCount) * 0.45f
+                        val progressX = totalWidth * progress
+
+                        // Waveform
+                        waveform.forEachIndexed { i, amplitude ->
+                            val x = i * (barWidth + gap)
+                            val barHeight = (amplitude * totalHeight * 0.85f).coerceAtLeast(3.dp.toPx())
+                            val top = (totalHeight - barHeight) / 2f
+                            val isPlayed = (x + barWidth / 2) <= progressX
+                            drawRoundRect(
+                                color = if (isPlayed) GradientStart else inactiveColor,
+                                topLeft = Offset(x, top),
+                                size = Size(barWidth, barHeight),
+                                cornerRadius = CornerRadius(barWidth / 2)
                             )
+                        }
+                    }
+                }
+
+                // Маркер + таймер — единый блок
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    // Маркер — маленькая белая палочка под waveform
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxWidth().height(8.dp)
+                    ) {
+                        val markerFraction = progress.coerceIn(0f, 1f)
+                        val markerOffsetDp = (maxWidth - 3.dp) * markerFraction
+                        Box(
+                            modifier = Modifier
+                                .padding(start = markerOffsetDp)
+                                .size(width = 3.dp, height = 8.dp)
+                                .background(Color.White, RoundedCornerShape(2.dp))
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Таймер — левая цифра двигается с прогрессом
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val textWidthDp = 32.dp
+                    val leftOffset = ((maxWidth - textWidthDp) * progress.coerceIn(0f, 1f))
+                        .coerceIn(0.dp, maxWidth - textWidthDp)
+
+                    Text(
+                        text = formatTime(currentPosition),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = leftOffset)
+                    )
+                    Text(
+                        text = formatTime(duration),
+                        color = ColorSecondary,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        modifier = Modifier.align(Alignment.CenterEnd)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(text = formatTime(currentPosition), color = ColorSecondary, fontSize = 11.sp)
-                    Text(text = formatTime(duration), color = ColorSecondary, fontSize = 11.sp)
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Кнопки управления
+                Spacer(modifier = Modifier.height(20.dp))
+                // ── Кнопки управления ──────────────────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Like
                     Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) { isLiked = !isLiked },
+                        modifier = Modifier.size(44.dp).clickable(
+                            interactionSource = remember { MutableInteractionSource() }, indication = null
+                        ) { isLiked = !isLiked },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -341,41 +416,23 @@ fun PlayerScreen(
                         )
                     }
 
-                    // Previous — без фона, просто иконка
                     Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) { viewModel.previousTrack() },
+                        modifier = Modifier.size(56.dp).clickable(
+                            interactionSource = remember { MutableInteractionSource() }, indication = null
+                        ) { viewModel.previousTrack() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipPrevious,
-                            contentDescription = "Previous",
-                            tint = ColorOnBackground,
-                            modifier = Modifier.size(36.dp)
-                        )
+                        Icon(Icons.Default.SkipPrevious, "Previous", tint = ColorOnBackground, modifier = Modifier.size(36.dp))
                     }
 
-                    // Play/Pause — большая круглая кнопка с градиентом
                     Box(
                         modifier = Modifier
                             .size(72.dp)
-                            .shadow(
-                                elevation = 24.dp,
-                                shape = CircleShape,
-                                spotColor = GradientStart.copy(alpha = 0.7f)
-                            )
-                            .background(
-                                brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)),
-                                shape = CircleShape
-                            )
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) { viewModel.togglePlayPause() },
+                            .shadow(elevation = 20.dp, shape = CircleShape, spotColor = GradientStart.copy(alpha = 0.6f))
+                            .background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = CircleShape)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                viewModel.togglePlayPause()
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -386,59 +443,40 @@ fun PlayerScreen(
                         )
                     }
 
-                    // Next — без фона, просто иконка
                     Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) { viewModel.nextTrack() },
+                        modifier = Modifier.size(56.dp).clickable(
+                            interactionSource = remember { MutableInteractionSource() }, indication = null
+                        ) { viewModel.nextTrack() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Next",
-                            tint = ColorOnBackground,
-                            modifier = Modifier.size(36.dp)
-                        )
+                        Icon(Icons.Default.SkipNext, "Next", tint = ColorOnBackground, modifier = Modifier.size(36.dp))
                     }
 
-                    // Add
                     Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) { },
+                        modifier = Modifier.size(44.dp).clickable(
+                            interactionSource = remember { MutableInteractionSource() }, indication = null
+                        ) {
+                            navController?.navigate(
+                                com.example.lumisound.navigation.MainDestination.Review().createRoute(track.id)
+                            )
+                        },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Add to playlist",
-                            tint = ColorSecondary,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        Icon(Icons.Default.ChatBubbleOutline, "Review", tint = ColorSecondary, modifier = Modifier.size(24.dp))
                     }
                 }
             }
         }
 
-        // Зона свайпа вниз для закрытия
+        // Зона свайпа вниз — только правые 2/3 экрана, чтобы не перекрывать кнопку закрытия
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(180.dp)
-                .align(Alignment.TopCenter)
+                .fillMaxWidth(0.7f) // только правые 70% ширины
+                .height(160.dp)
+                .align(Alignment.TopEnd) // прижимаем вправо
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
-                        onDragStart = { offset ->
-                            val buttonAreaWidth = with(density) { 70.dp.toPx() }
-                            val buttonAreaHeight = with(density) { 80.dp.toPx() }
-                            if (offset.x < buttonAreaWidth && offset.y < buttonAreaHeight) return@detectVerticalDragGestures
-                            isDraggingToClose = true
-                        },
+                        onDragStart = { isDraggingToClose = true },
                         onDragEnd = {
                             if (closeProgress >= 0.4f) {
                                 isDraggingToClose = false
@@ -450,9 +488,6 @@ fun PlayerScreen(
                             }
                         },
                         onVerticalDrag = { change, dragAmount ->
-                            val buttonAreaWidth = with(density) { 70.dp.toPx() }
-                            val buttonAreaHeight = with(density) { 80.dp.toPx() }
-                            if (change.position.x < buttonAreaWidth && change.position.y < buttonAreaHeight) return@detectVerticalDragGestures
                             if (dragAmount > 0) {
                                 closeProgress = (closeProgress + dragAmount / maxDragPx).coerceIn(0f, 1f)
                                 change.consume()

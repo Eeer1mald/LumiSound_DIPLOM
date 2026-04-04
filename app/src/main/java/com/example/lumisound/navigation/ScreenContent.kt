@@ -10,6 +10,7 @@ import com.example.lumisound.feature.profile.ProfileScreen
 import com.example.lumisound.feature.ratings.RatedTrack
 import com.example.lumisound.feature.ratings.RatingsScreen
 import com.example.lumisound.feature.search.SearchScreen
+import com.example.lumisound.navigation.MainDestination
 
 @Composable
 fun ScreenContent(
@@ -87,17 +88,42 @@ fun ScreenContent(
             )
         }
         "profile" -> key(route) {
-            // Оптимизация для 120Hz: используем remember для callbacks, чтобы не пересоздавать lambda
+            val playerViewModel: com.example.lumisound.feature.nowplaying.PlayerViewModel =
+                androidx.hilt.navigation.compose.hiltViewModel()
             val onRatingsClick = remember(navController) {
                 { navController.navigate("ratings") }
             }
             val onSettingsClick = remember(navController) {
                 { navController.navigate("settings") }
             }
+            val onArtistClick = remember(navController) {
+                { artistId: String, artistName: String, artistImageUrl: String? ->
+                    navController.navigate(
+                        MainDestination.Artist().createRoute(artistId, artistName, artistImageUrl)
+                    )
+                }
+            }
+            val onTrackClick = remember(playerViewModel) {
+                { trackId: String, title: String, artist: String, coverUrl: String?, previewUrl: String? ->
+                    if (!previewUrl.isNullOrBlank()) {
+                        playerViewModel.playTrack(
+                            com.example.lumisound.data.model.Track(
+                                id = trackId,
+                                name = title,
+                                artist = artist,
+                                imageUrl = coverUrl,
+                                previewUrl = previewUrl
+                            )
+                        )
+                    }
+                }
+            }
             ProfileScreen(
                 navController = navController,
                 onRatingsClick = onRatingsClick,
-                onSettingsClick = onSettingsClick
+                onSettingsClick = onSettingsClick,
+                onArtistClick = onArtistClick,
+                onTrackClick = onTrackClick
             )
         }
     }

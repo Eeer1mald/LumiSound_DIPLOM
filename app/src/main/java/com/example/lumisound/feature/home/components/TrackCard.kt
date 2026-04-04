@@ -161,10 +161,8 @@ fun TrackCard(
                 }
             }
 
-            // Заменён градиент на однотонный цвет с прозрачностью
-            val overlayColor = remember(alpha) {
-                GradientStart.copy(alpha = alpha * 0.15f) // Однотонный цвет вместо градиента
-            }
+            // Overlay при hover
+            val overlayColor = GradientStart.copy(alpha = alpha * 0.15f)
             Box(
                 modifier = Modifier
                     .fillMaxSize()

@@ -156,7 +156,7 @@ class PlayerViewModel @Inject constructor(
             while (_isPlaying.value) {
                 _currentPosition.value = audioPlayerService.getCurrentPosition()
                 _duration.value = audioPlayerService.getDuration()
-                delay(100)
+                delay(250) // 4 раза в секунду — достаточно для UI, не нагружает рекомпозиции
             }
         }
     }

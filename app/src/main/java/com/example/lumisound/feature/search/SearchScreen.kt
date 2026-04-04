@@ -184,10 +184,6 @@ fun SearchScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer {
-                            // Кешируем графический слой для ускорения скролла на 120Hz
-                            compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
-                        }
                         .verticalScroll(scrollState)
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
@@ -419,13 +415,7 @@ private fun TrendingTrackItem(
     val trackItemColor = remember {
         ColorSurface.copy(alpha = 0.8f) // Тёмно-серый вместо градиента
     }
-    val rankColor = remember(rank) {
-        if (rank <= 3) {
-            GradientStart // Однотонный акцентный цвет
-        } else {
-            ColorSurface // Тёмно-серый
-        }
-    }
+    val rankColor = if (rank <= 3) GradientStart else ColorSurface
     Box(
         modifier = modifier
             .background(

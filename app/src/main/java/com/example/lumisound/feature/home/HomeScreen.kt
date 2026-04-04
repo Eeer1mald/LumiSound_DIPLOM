@@ -33,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
@@ -86,15 +85,11 @@ fun HomeScreen(
                 userName = state.userName.ifEmpty { userName }
             )
             
-            // Scrollable Content - оптимизация scrollState с graphicsLayer для 120Hz
+            // Scrollable Content
             val scrollState = rememberScrollState()
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        // Кешируем графический слой для ускорения скролла на 120Hz
-                        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
-                    }
                     .verticalScroll(scrollState)
                     .padding(horizontal = 16.dp)
             ) {

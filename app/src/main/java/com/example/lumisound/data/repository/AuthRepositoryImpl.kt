@@ -136,4 +136,32 @@ class AuthRepositoryImpl @Inject constructor(
     override suspend fun incrementArtistPlayCount(accessToken: String, artistId: String, artistName: String, artistImageUrl: String?): Result<Unit> {
         return supabase.incrementArtistPlayCount(accessToken, artistId, artistName, artistImageUrl)
     }
+
+    override suspend fun upsertTrackRating(accessToken: String, rating: SupabaseService.TrackRatingInsert): Result<SupabaseService.TrackRatingResponse> {
+        return supabase.upsertTrackRating(accessToken, rating)
+    }
+
+    override suspend fun getMyTrackRating(accessToken: String, audiusTrackId: String): SupabaseService.TrackRatingResponse? {
+        return supabase.getMyTrackRating(accessToken, audiusTrackId)
+    }
+
+    override suspend fun getMyRatings(accessToken: String, limit: Int): List<SupabaseService.TrackRatingResponse> {
+        return supabase.getMyRatings(accessToken, limit)
+    }
+
+    override suspend fun addTrackComment(accessToken: String, comment: SupabaseService.TrackCommentInsert): Result<SupabaseService.TrackCommentResponse> {
+        return supabase.addTrackComment(accessToken, comment)
+    }
+
+    override suspend fun getTrackComments(accessToken: String, audiusTrackId: String): List<SupabaseService.TrackCommentResponse> {
+        return supabase.getTrackComments(accessToken, audiusTrackId)
+    }
+
+    override suspend fun getMyComments(accessToken: String, limit: Int): List<SupabaseService.TrackCommentResponse> {
+        return supabase.getMyComments(accessToken, limit)
+    }
+
+    override suspend fun deleteTrackComment(accessToken: String, commentId: String): Result<Unit> {
+        return supabase.deleteTrackComment(accessToken, commentId)
+    }
 }

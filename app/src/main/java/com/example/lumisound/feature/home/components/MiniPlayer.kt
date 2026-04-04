@@ -57,17 +57,18 @@ import kotlin.math.abs
 fun MiniPlayer(
     currentTrack: Track?,
     isPlaying: Boolean,
-    progress: Float, // от 0 до 1
+    progress: Float,
     onPlayPauseClick: () -> Unit,
     onTrackClick: () -> Unit,
     onAddClick: () -> Unit = {},
     onLikeClick: () -> Unit = {},
+    onArtistClick: ((artistId: String?, artistName: String, artistImageUrl: String?) -> Unit)? = null,
     isLiked: Boolean = false,
-    animationProgress: Float = 0f, // Прогресс анимации от 0 до 1
+    animationProgress: Float = 0f,
     onAnimationProgressChange: (Float) -> Unit = {},
     onDragStart: () -> Unit = {},
     onDragEnd: () -> Unit = {},
-    onDragVelocityChange: (Float) -> Unit = {}, // Передаем скорость для инерции
+    onDragVelocityChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (currentTrack == null) {
@@ -228,9 +229,7 @@ fun MiniPlayer(
                     }
                 }
                 
-                // Play button (white circle with black triangle/pause)
-                // Показываем паузу с прогрессом, если трек уже играл (progress > 0) или сейчас играет
-                val shouldShowPause = isPlaying || progress > 0f
+                // Иконка зависит только от isPlaying
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -242,10 +241,10 @@ fun MiniPlayer(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (shouldShowPause) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (shouldShowPause) "Pause" else "Play",
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
                         tint = Color.Black,
-                        modifier = Modifier.size(if (shouldShowPause) 18.dp else 20.dp)
+                        modifier = Modifier.size(if (isPlaying) 18.dp else 20.dp)
                     )
                 }
             }
@@ -279,14 +278,20 @@ fun MiniPlayer(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Add button
+                // Add button — переход на профиль артиста
                 Icon(
                     imageVector = Icons.Default.Person,
-                    contentDescription = "Add",
+                    contentDescription = "Artist profile",
                     tint = Color.White,
                     modifier = Modifier
                         .size(24.dp)
-                        .clickable { onAddClick() }
+                        .clickable {
+                            onArtistClick?.invoke(
+                                currentTrack.artistId,
+                                currentTrack.artist,
+                                currentTrack.artistImageUrl
+                            )
+                        }
                 )
                 
                 // Like button (orange heart when liked)

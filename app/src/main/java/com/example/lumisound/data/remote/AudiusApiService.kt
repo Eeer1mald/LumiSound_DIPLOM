@@ -9,8 +9,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import android.util.Log
 import javax.inject.Inject
@@ -36,6 +34,33 @@ data class AudiusArtist(
 )
 
 @Serializable
+data class AudiusArtistFull(
+    val id: String,
+    val name: String,
+    @SerialName("profile_picture") val profilePicture: JsonObject? = null,
+    @SerialName("cover_photo") val coverPhoto: JsonObject? = null,
+    @SerialName("bio") val bio: String? = null,
+    @SerialName("location") val location: String? = null,
+    @SerialName("follower_count") val followerCount: Int? = null,
+    @SerialName("following_count") val followingCount: Int? = null,
+    @SerialName("track_count") val trackCount: Int? = null,
+    @SerialName("playlist_count") val playlistCount: Int? = null,
+    @SerialName("is_verified") val isVerified: Boolean? = null,
+    @SerialName("twitter_handle") val twitterHandle: String? = null,
+    @SerialName("instagram_handle") val instagramHandle: String? = null
+)
+
+@Serializable
+data class AudiusArtistResponse(
+    val data: AudiusArtistFull? = null
+)
+
+@Serializable
+data class AudiusTracksResponse(
+    val data: List<AudiusTrack>? = null
+)
+
+@Serializable
 data class AudiusSearchResponse(
     val data: List<AudiusTrack>? = null
 )
@@ -54,23 +79,22 @@ class AudiusApiService @Inject constructor(
         )
         private const val APP_NAME = "LumiSound"
     }
-    
+
     private var currentHostIndex = 0
-    
+
     private val currentHost: String
         get() = HOSTS[currentHostIndex]
-    
+
     private fun rotateHost() {
         currentHostIndex = (currentHostIndex + 1) % HOSTS.size
         Log.d(TAG, "Switching to host: $currentHost")
     }
-    
+
     private suspend fun <T> makeRequestWithFallback(
         endpoint: String,
         block: suspend (String) -> T
     ): T {
         var lastException: Exception? = null
-        
         for (i in HOSTS.indices) {
             try {
                 val url = "$currentHost$endpoint"
@@ -83,10 +107,15 @@ class AudiusApiService @Inject constructor(
                 if (i == HOSTS.size - 1) break
             }
         }
-        
         throw lastException ?: Exception("All Audius API hosts failed")
     }
-    
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        explicitNulls = false
+    }
+
     suspend fun searchTracks(query: String, limit: Int = 10): Result<List<AudiusTrack>> {
         return runCatching {
             makeRequestWithFallback("/v1/tracks/search") { baseUrl ->
@@ -96,33 +125,59 @@ class AudiusApiService @Inject constructor(
                     parameter("limit", limit)
                     parameter("app_name", APP_NAME)
                 }.body<String>()
-                
-                Log.d(TAG, "Audius API response: $response")
-                
-                val json = Json { 
-                    ignoreUnknownKeys = true
-                    isLenient = true
-                    explicitNulls = false
-                }
                 val searchResponse = json.decodeFromString(AudiusSearchResponse.serializer(), response)
                 searchResponse.data ?: emptyList()
             }
         }
     }
-    
+
+    suspend fun getArtist(artistId: String): Result<AudiusArtistFull> {
+        return runCatching {
+            makeRequestWithFallback("/v1/users/$artistId") { baseUrl ->
+                val response = httpClient.get {
+                    url(baseUrl)
+                    parameter("app_name", APP_NAME)
+                }.body<String>()
+                Log.d(TAG, "Artist response: $response")
+                val artistResponse = json.decodeFromString(AudiusArtistResponse.serializer(), response)
+                artistResponse.data ?: throw Exception("Artist not found")
+            }
+        }
+    }
+
+    suspend fun getArtistTracks(artistId: String, limit: Int = 10): Result<List<AudiusTrack>> {
+        return runCatching {
+            makeRequestWithFallback("/v1/users/$artistId/tracks") { baseUrl ->
+                val response = httpClient.get {
+                    url(baseUrl)
+                    parameter("limit", limit)
+                    parameter("app_name", APP_NAME)
+                }.body<String>()
+                Log.d(TAG, "Artist tracks response: $response")
+                val tracksResponse = json.decodeFromString(AudiusTracksResponse.serializer(), response)
+                tracksResponse.data ?: emptyList()
+            }
+        }
+    }
+
     fun getArtworkUrl(artwork: JsonObject?, size: String = "480x480"): String? {
         return artwork?.get(size)?.jsonPrimitive?.content
             ?: artwork?.get("150x150")?.jsonPrimitive?.content
             ?: artwork?.get("1000x1000")?.jsonPrimitive?.content
     }
-    
+
     fun getProfilePictureUrl(profilePicture: JsonObject?, size: String = "480x480"): String? {
         return profilePicture?.get(size)?.jsonPrimitive?.content
             ?: profilePicture?.get("150x150")?.jsonPrimitive?.content
             ?: profilePicture?.get("1000x1000")?.jsonPrimitive?.content
             ?: profilePicture?.get("200x200")?.jsonPrimitive?.content
     }
-    
+
+    fun getCoverPhotoUrl(coverPhoto: JsonObject?, size: String = "2000x"): String? {
+        return coverPhoto?.get(size)?.jsonPrimitive?.content
+            ?: coverPhoto?.get("640x")?.jsonPrimitive?.content
+    }
+
     fun getStreamUrl(trackId: String): String {
         return "$currentHost/v1/tracks/$trackId/stream"
     }

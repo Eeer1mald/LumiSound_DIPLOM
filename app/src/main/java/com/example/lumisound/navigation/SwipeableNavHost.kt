@@ -18,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -101,18 +100,9 @@ fun SwipeableNavHost(
             }
     }
     
-    // Player state - используем derivedStateOf для оптимизации производительности
+    // Player state — только currentTrack и isPlaying здесь, прогресс изолирован в MiniPlayerWrapper
     val currentTrack by playerStateHolder.currentTrack.collectAsState()
     val isPlaying by playerViewModel.isPlaying.collectAsState()
-    val currentPosition by playerViewModel.currentPosition.collectAsState()
-    val duration by playerViewModel.duration.collectAsState()
-    
-    // Используем derivedStateOf для уменьшения рекомпозиций (вычисляется только при изменении зависимостей)
-    val progress = androidx.compose.runtime.derivedStateOf {
-        if (duration > 0 && currentTrack != null) {
-            (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-        } else 0f
-    }.value
     
     var isLiked by remember { mutableStateOf(false) }
     
@@ -164,11 +154,8 @@ fun SwipeableNavHost(
     val initialPlayerTopY = (screenHeightPx - miniPlayerTotalHeightPx).coerceAtLeast(0f)
     
     // Смещение плеера: при progress = 0 верхняя грань в initialPlayerTopY,
-    // при progress = 1 — в самом верху (0). Движение выглядит "привязанным" к пальцу.
-    val playerOffsetY = remember(animationProgress, initialPlayerTopY) {
-        val t = animationProgress.coerceIn(0f, 1f)
-        initialPlayerTopY * (1f - t)
-    }
+    // при progress = 1 — в самом верху (0).
+    val playerOffsetY = initialPlayerTopY * (1f - animationProgress.coerceIn(0f, 1f))
     
     // var wasInPlayer by remember { mutableStateOf(false) }
     // 
@@ -210,18 +197,10 @@ fun SwipeableNavHost(
             // Используем remember для стабильного route, чтобы минимизировать рекомпозиции
             // Важно: используем page как ключ для remember, чтобы каждому экрану соответствовал свой route
             val route = remember(page, routes) { routes[page] }
-            // Обертываем каждый экран в Box с фоном для предотвращения мерцания
-            // КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ для 120Hz: используем graphicsLayer для кеширования экранов
-            // Это позволяет GPU кешировать содержимое страницы и не перерисовывать его при свайпе
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(ColorBackground)
-                    .graphicsLayer {
-                        // Кешируем графический слой для ускорения рендеринга при свайпе
-                        // compositingStrategy автоматически оптимизирует рендеринг для 120Hz
-                        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
-                    }
             ) {
                 ScreenContent(
                     route = route,
@@ -246,10 +225,16 @@ fun SwipeableNavHost(
             // Проверяем напрямую из playerStateHolder для надежности
             val shouldShowMiniPlayer = trackForMiniPlayer != null
             if (shouldShowMiniPlayer) {
+                // Прогресс вычисляется внутри MiniPlayer — изолируем рекомпозицию от currentPosition
+                val miniProgress = androidx.compose.runtime.derivedStateOf {
+                    val pos = playerViewModel.currentPosition.value
+                    val dur = playerViewModel.duration.value
+                    if (dur > 0 && trackForMiniPlayer != null) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+                }.value
                 MiniPlayer(
-                    currentTrack = trackForMiniPlayer, // Используем стабильную переменную
+                    currentTrack = trackForMiniPlayer,
                     isPlaying = isPlaying,
-                    progress = progress,
+                    progress = miniProgress,
                     onPlayPauseClick = { playerViewModel.togglePlayPause() },
                     onTrackClick = {
                         // Открываем плеер при клике (если не происходит анимация)
@@ -266,9 +251,14 @@ fun SwipeableNavHost(
                             }
                         }
                     },
-                    // TODO: Реализовать добавление трека в плейлист
-                    onAddClick = { /* TODO: Add to playlist functionality */ },
+                    onAddClick = { },
                     onLikeClick = { isLiked = !isLiked },
+                    onArtistClick = { artistId, artistName, artistImageUrl ->
+                        navController.navigate(
+                            com.example.lumisound.navigation.MainDestination.Artist()
+                                .createRoute(artistId, artistName, artistImageUrl)
+                        )
+                    },
                     isLiked = isLiked,
                     // Логика анимации разворачивания мини-плеера в полноэкранный плеер
                     // animationProgress обновляется в реальном времени при свайпе
@@ -412,11 +402,10 @@ fun SwipeableNavHost(
             ) {
                 PlayerScreen(
                     track = trackForMiniPlayer,
+                    navController = navController,
                     onClose = {
-                        // При закрытии сбрасываем анимацию
                         targetAnimationProgress = 0f
                         rawAnimationProgress = 0f
-                        // Возвращаемся на предыдущую страницу
                         navController.popBackStack()
                     },
                     viewModel = playerViewModel

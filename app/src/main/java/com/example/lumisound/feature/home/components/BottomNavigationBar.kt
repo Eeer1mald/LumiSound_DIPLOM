@@ -1,15 +1,12 @@
 package com.example.lumisound.feature.home.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.runtime.remember
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,28 +16,24 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.lumisound.ui.theme.ColorAccentSecondary
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.ColorSecondary
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
 
 typealias NavItem = String
+
+// Чёрный полупрозрачный фон
+private val NavBarBackground = Color(0xFF000000).copy(alpha = 0.6f)
+private val NavBarBorder = Color(0xFF1E1E1E).copy(alpha = 0.5f)
 
 @Composable
 fun BottomNavigationBar(
@@ -49,50 +42,37 @@ fun BottomNavigationBar(
     modifier: Modifier = Modifier
 ) {
     val navItems = listOf(
-        NavItemData(
-            id = "home",
-            icon = Icons.Default.Home,
-            label = "Домой"
-        ),
-        NavItemData(
-            id = "search",
-            icon = Icons.Default.Search,
-            label = "Поиск"
-        ),
-        NavItemData(
-            id = "ratings",
-            icon = Icons.Default.Star,
-            label = "Рецензии"
-        ),
-        NavItemData(
-            id = "profile",
-            icon = Icons.Default.Person,
-            label = "Профиль"
-        )
+        NavItemData("home",    Icons.Default.Home,   "Домой"),
+        NavItemData("search",  Icons.Default.Search, "Поиск"),
+        NavItemData("ratings", Icons.Default.Star,   "Рецензии"),
+        NavItemData("profile", Icons.Default.Person, "Профиль")
     )
 
+    // Полупрозрачный тёмно-синий контейнер
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(
-                color = ColorBackground, // Чёрный фон вместо 0xFF0F1020
-                shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp)
-            )
-            .border(
-                width = 1.dp,
-                color = Color(0xFF1F1F1F).copy(alpha = 0.4f), // Тёмно-серый вместо 0xFF2A2D3E
-                shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp)
-            )
+            .background(NavBarBackground)
             .testTag("bottom_navigation")
     ) {
-        androidx.compose.foundation.layout.Row(
+        // Тонкая линия сверху
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceAround
+                .size(height = 1.dp, width = 0.dp)
+                .background(NavBarBorder)
+                .align(Alignment.TopCenter)
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             navItems.forEach { item ->
-                NavigationItem(
+                NavBarItem(
                     item = item,
                     isActive = currentRoute == item.id,
                     onClick = { onNavigate(item.id) },
@@ -104,7 +84,7 @@ fun BottomNavigationBar(
 }
 
 @Composable
-private fun NavigationItem(
+private fun NavBarItem(
     item: NavItemData,
     isActive: Boolean,
     onClick: () -> Unit,
@@ -119,33 +99,36 @@ private fun NavigationItem(
             ),
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .padding(8.dp)
-                .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        color = remember(isActive) {
-                            if (isActive) {
-                                GradientStart // Однотонный акцентный цвет вместо градиента
-                            } else {
-                                Color.Transparent
-                            }
-                        }
-                    )
-                .shadow(
-                    elevation = if (isActive) 4.dp else 0.dp,
-                    shape = RoundedCornerShape(12.dp),
-                    spotColor = if (isActive) GradientEnd.copy(alpha = 0.3f) else Color.Transparent
+        if (isActive) {
+            // Активный — непрозрачный цветной квадратик с иконкой
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 6.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(GradientStart) // полностью непрозрачный
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = item.icon,
+                    contentDescription = item.label,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
                 )
-                .then(if (isActive) Modifier.padding(10.dp) else Modifier.padding(8.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = item.label,
-                tint = if (isActive) Color.White else ColorSecondary,
-                modifier = Modifier.size(24.dp)
-            )
+            }
+        } else {
+            // Неактивный — просто иконка
+            Box(
+                modifier = Modifier.padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = item.icon,
+                    contentDescription = item.label,
+                    tint = ColorSecondary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
     }
 }
@@ -155,4 +138,3 @@ private data class NavItemData(
     val icon: ImageVector,
     val label: String
 )
-

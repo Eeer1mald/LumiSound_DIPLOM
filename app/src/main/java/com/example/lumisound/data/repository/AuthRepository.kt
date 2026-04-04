@@ -32,5 +32,16 @@ interface AuthRepository {
     // Play Count Tracking
     suspend fun incrementTrackPlayCount(accessToken: String, trackId: String, trackTitle: String, trackArtist: String, trackCoverUrl: String? = null, trackPreviewUrl: String? = null): Result<Unit>
     suspend fun incrementArtistPlayCount(accessToken: String, artistId: String, artistName: String, artistImageUrl: String? = null): Result<Unit>
+
+    // Track Ratings
+    suspend fun upsertTrackRating(accessToken: String, rating: SupabaseService.TrackRatingInsert): Result<SupabaseService.TrackRatingResponse>
+    suspend fun getMyTrackRating(accessToken: String, audiusTrackId: String): SupabaseService.TrackRatingResponse?
+    suspend fun getMyRatings(accessToken: String, limit: Int = 50): List<SupabaseService.TrackRatingResponse>
+
+    // Track Comments
+    suspend fun addTrackComment(accessToken: String, comment: SupabaseService.TrackCommentInsert): Result<SupabaseService.TrackCommentResponse>
+    suspend fun getTrackComments(accessToken: String, audiusTrackId: String): List<SupabaseService.TrackCommentResponse>
+    suspend fun getMyComments(accessToken: String, limit: Int = 50): List<SupabaseService.TrackCommentResponse>
+    suspend fun deleteTrackComment(accessToken: String, commentId: String): Result<Unit>
 }
 

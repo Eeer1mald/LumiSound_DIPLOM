@@ -604,4 +604,206 @@ class SupabaseService @Inject constructor(
             }
         }
     }
+
+    // ========== TRACK RATINGS ==========
+
+    @Serializable
+    data class TrackRatingInsert(
+        @SerialName("audius_track_id") val audiusTrackId: String,
+        @SerialName("track_title") val trackTitle: String,
+        @SerialName("track_artist") val trackArtist: String,
+        @SerialName("track_cover_url") val trackCoverUrl: String? = null,
+        @SerialName("rhyme_score") val rhymeScore: Int? = null,
+        @SerialName("imagery_score") val imageryScore: Int? = null,
+        @SerialName("structure_score") val structureScore: Int? = null,
+        @SerialName("charisma_score") val charismaScore: Int? = null,
+        @SerialName("atmosphere_score") val atmosphereScore: Int? = null,
+        val review: String? = null
+    )
+
+    @Serializable
+    data class TrackRatingResponse(
+        val id: String,
+        @SerialName("user_id") val userId: String,
+        @SerialName("audius_track_id") val audiusTrackId: String,
+        @SerialName("track_title") val trackTitle: String,
+        @SerialName("track_artist") val trackArtist: String,
+        @SerialName("track_cover_url") val trackCoverUrl: String? = null,
+        @SerialName("rhyme_score") val rhymeScore: Int? = null,
+        @SerialName("imagery_score") val imageryScore: Int? = null,
+        @SerialName("structure_score") val structureScore: Int? = null,
+        @SerialName("charisma_score") val charismaScore: Int? = null,
+        @SerialName("atmosphere_score") val atmosphereScore: Int? = null,
+        @SerialName("overall_score") val overallScore: Double? = null,
+        val review: String? = null,
+        @SerialName("created_at") val createdAt: String? = null,
+        @SerialName("updated_at") val updatedAt: String? = null
+    )
+
+    suspend fun upsertTrackRating(accessToken: String, rating: TrackRatingInsert): Result<TrackRatingResponse> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id
+                ?: throw IllegalStateException("Не удалось получить user ID")
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+            val body = buildString {
+                append("{")
+                append("\"user_id\":\"$userId\",")
+                append("\"audius_track_id\":\"${rating.audiusTrackId}\",")
+                append("\"track_title\":\"${rating.trackTitle.replace("\"", "\\\"")}\",")
+                append("\"track_artist\":\"${rating.trackArtist.replace("\"", "\\\"")}\",")
+                rating.trackCoverUrl?.let { append("\"track_cover_url\":\"$it\",") }
+                rating.rhymeScore?.let { append("\"rhyme_score\":$it,") }
+                rating.imageryScore?.let { append("\"imagery_score\":$it,") }
+                rating.structureScore?.let { append("\"structure_score\":$it,") }
+                rating.charismaScore?.let { append("\"charisma_score\":$it,") }
+                rating.atmosphereScore?.let { append("\"atmosphere_score\":$it,") }
+                rating.review?.let { append("\"review\":\"${it.replace("\"", "\\\"")}\",") }
+                if (endsWith(",")) deleteCharAt(length - 1)
+                append("}")
+            }
+
+            val response = http.post {
+                url("$baseUrl/rest/v1/track_ratings")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                header("Prefer", "resolution=merge-duplicates,return=representation")
+                contentType(ContentType.Application.Json)
+                setBody("[$body]")
+            }
+            val text = response.bodyAsText()
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка сохранения оценки: ${response.status}. $text")
+            json.decodeFromString<List<TrackRatingResponse>>(text).first()
+        }
+    }
+
+    suspend fun getMyTrackRating(accessToken: String, audiusTrackId: String): TrackRatingResponse? {
+        return try {
+            val userId = getUser(accessToken)?.id ?: return null
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/track_ratings")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("user_id", "eq.$userId")
+                parameter("audius_track_id", "eq.$audiusTrackId")
+                parameter("limit", "1")
+            }
+            if (response.status.isSuccess()) {
+                json.decodeFromString<List<TrackRatingResponse>>(response.bodyAsText()).firstOrNull()
+            } else null
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun getMyRatings(accessToken: String, limit: Int = 50): List<TrackRatingResponse> {
+        return try {
+            val userId = getUser(accessToken)?.id ?: return emptyList()
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/track_ratings")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("user_id", "eq.$userId")
+                parameter("order", "updated_at.desc")
+                parameter("limit", limit.toString())
+            }
+            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    // ========== TRACK COMMENTS ==========
+
+    @Serializable
+    data class TrackCommentInsert(
+        @SerialName("audius_track_id") val audiusTrackId: String,
+        @SerialName("track_title") val trackTitle: String,
+        @SerialName("track_artist") val trackArtist: String,
+        @SerialName("track_cover_url") val trackCoverUrl: String? = null,
+        val comment: String
+    )
+
+    @Serializable
+    data class TrackCommentResponse(
+        val id: String,
+        @SerialName("user_id") val userId: String,
+        @SerialName("audius_track_id") val audiusTrackId: String,
+        @SerialName("track_title") val trackTitle: String,
+        @SerialName("track_artist") val trackArtist: String,
+        @SerialName("track_cover_url") val trackCoverUrl: String? = null,
+        val comment: String,
+        @SerialName("created_at") val createdAt: String? = null
+    )
+
+    suspend fun addTrackComment(accessToken: String, comment: TrackCommentInsert): Result<TrackCommentResponse> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id
+                ?: throw IllegalStateException("Не удалось получить user ID")
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+            val body = buildString {
+                append("{")
+                append("\"user_id\":\"$userId\",")
+                append("\"audius_track_id\":\"${comment.audiusTrackId}\",")
+                append("\"track_title\":\"${comment.trackTitle.replace("\"", "\\\"")}\",")
+                append("\"track_artist\":\"${comment.trackArtist.replace("\"", "\\\"")}\",")
+                comment.trackCoverUrl?.let { append("\"track_cover_url\":\"$it\",") }
+                append("\"comment\":\"${comment.comment.replace("\"", "\\\"")}\"")
+                append("}")
+            }
+
+            val response = http.post {
+                url("$baseUrl/rest/v1/track_comments")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                header("Prefer", "return=representation")
+                contentType(ContentType.Application.Json)
+                setBody("[$body]")
+            }
+            val text = response.bodyAsText()
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка добавления комментария: ${response.status}. $text")
+            json.decodeFromString<List<TrackCommentResponse>>(text).first()
+        }
+    }
+
+    suspend fun getTrackComments(accessToken: String, audiusTrackId: String): List<TrackCommentResponse> {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/track_comments")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("audius_track_id", "eq.$audiusTrackId")
+                parameter("order", "created_at.desc")
+                parameter("limit", "100")
+            }
+            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getMyComments(accessToken: String, limit: Int = 50): List<TrackCommentResponse> {
+        return try {
+            val userId = getUser(accessToken)?.id ?: return emptyList()
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/track_comments")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("user_id", "eq.$userId")
+                parameter("order", "created_at.desc")
+                parameter("limit", limit.toString())
+            }
+            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun deleteTrackComment(accessToken: String, commentId: String): Result<Unit> {
+        return runCatching {
+            val response = http.delete {
+                url("$baseUrl/rest/v1/track_comments?id=eq.$commentId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка удаления комментария: ${response.status}")
+        }
+    }
 }

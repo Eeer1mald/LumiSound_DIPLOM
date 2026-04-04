@@ -1,0 +1,456 @@
+package com.example.lumisound.feature.ratings
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
+import coil.request.ImageRequest
+import com.example.lumisound.data.model.Track
+import com.example.lumisound.data.remote.SupabaseService
+import com.example.lumisound.ui.theme.ColorBackground
+import com.example.lumisound.ui.theme.ColorOnBackground
+import com.example.lumisound.ui.theme.ColorSecondary
+import com.example.lumisound.ui.theme.ColorSurface
+import com.example.lumisound.ui.theme.GradientEnd
+import com.example.lumisound.ui.theme.GradientStart
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@Composable
+fun ReviewScreen(
+    track: Track,
+    onClose: () -> Unit,
+    onOpenReviews: () -> Unit = {},
+    viewModel: ReviewViewModel = hiltViewModel()
+) {
+    val state by viewModel.state.collectAsState()
+    val focusManager = LocalFocusManager.current
+    var showRatingSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(track.id) { viewModel.loadForTrack(track.id) }
+    LaunchedEffect(state.savedSuccess) { if (state.savedSuccess) viewModel.clearSuccess() }
+
+    Box(modifier = Modifier.fillMaxSize().background(ColorBackground)) {
+        // Scaffold обеспечивает правильное поведение с клавиатурой
+        Scaffold(
+            containerColor = ColorBackground,
+            contentColor = ColorOnBackground,
+            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(bottom = 80.dp),
+            topBar = {
+                Column(modifier = Modifier.statusBarsPadding()) {
+                    // ── Хедер ──────────────────────────────────────────
+                    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterStart).size(36.dp)
+                                .background(Color.White.copy(alpha = 0.08f), CircleShape)
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Close, "Close", tint = ColorOnBackground, modifier = Modifier.size(18.dp))
+                        }
+
+                        Text(
+                            "${state.comments.size} комментариев",
+                            color = ColorOnBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+
+                        // Кнопка рецензий — компактная иконка
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .size(36.dp)
+                                .background(ColorSurface, CircleShape)
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onOpenReviews() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Star, "Reviews", tint = GradientStart, modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    // ── Инфо о треке + кружок оценки ───────────────────
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(ColorSurface)) {
+                            if (!track.imageUrl.isNullOrEmpty()) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current).data(track.imageUrl).crossfade(false).build(),
+                                    contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(22.dp).align(Alignment.Center))
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(track.name, color = ColorOnBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(track.artist ?: "", color = ColorSecondary, fontSize = 12.sp, maxLines = 1)
+                        }
+                        // Кружок с оценкой
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(
+                                    brush = if (state.existingRating?.overallScore != null)
+                                        Brush.linearGradient(listOf(GradientStart, GradientEnd))
+                                    else Brush.linearGradient(listOf(ColorSurface, ColorSurface)),
+                                    shape = CircleShape
+                                )
+                                .border(
+                                    width = if (state.existingRating?.overallScore == null) 1.dp else 0.dp,
+                                    color = Color.White.copy(alpha = 0.15f), shape = CircleShape
+                                )
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                    showRatingSheet = true
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val score = state.existingRating?.overallScore
+                            if (score != null) {
+                                Text(String.format("%.1f", score), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                            } else {
+                                Icon(Icons.Default.Star, "Rate", tint = ColorSecondary, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
+
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
+                }
+            },
+            bottomBar = {
+                // ── Поле ввода — прилипает к клавиатуре через Scaffold ──
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF0E0E0E))
+                        .navigationBarsPadding()
+                        .imePadding()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Аватар профиля
+                    Box(
+                        modifier = Modifier.size(34.dp).clip(CircleShape).background(ColorSurface),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!state.userAvatarUrl.isNullOrEmpty()) {
+                            SubcomposeAsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(state.userAvatarUrl).crossfade(false).build(),
+                                contentDescription = "Avatar",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                                loading = {
+                                    Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(18.dp))
+                                },
+                                error = {
+                                    Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(18.dp))
+                                },
+                                success = { SubcomposeAsyncImageContent() }
+                            )
+                        } else {
+                            Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = state.commentText,
+                        onValueChange = { viewModel.setCommentText(it) },
+                        placeholder = { Text("Комментарий...", color = ColorSecondary, fontSize = 13.sp) },
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent,
+                            focusedTextColor = ColorOnBackground, unfocusedTextColor = ColorOnBackground,
+                            cursorColor = GradientStart,
+                            focusedContainerColor = Color.White.copy(alpha = 0.07f),
+                            unfocusedContainerColor = Color.White.copy(alpha = 0.07f)
+                        ),
+                        shape = RoundedCornerShape(20.dp),
+                        maxLines = 3,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = {
+                            focusManager.clearFocus()
+                            viewModel.submitComment(track.id, track.name, track.artist ?: "", track.imageUrl)
+                        })
+                    )
+
+                    if (state.commentText.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = CircleShape)
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                    focusManager.clearFocus()
+                                    viewModel.submitComment(track.id, track.name, track.artist ?: "", track.imageUrl)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Check, "Send", tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    } // закрываем Row
+            }
+        ) { innerPadding ->
+            // ── Список комментариев ────────────────────────────────────
+            if (state.isLoading) {
+                Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(32.dp))
+                }
+            } else if (state.comments.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Нет комментариев", color = ColorOnBackground.copy(alpha = 0.5f), fontSize = 15.sp, textAlign = TextAlign.Center)
+                        Text("Будьте первым!", color = ColorSecondary, fontSize = 13.sp, textAlign = TextAlign.Center)
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    items(state.comments, key = { it.id }) { comment ->
+                        CommentRow(comment = comment, onDelete = { viewModel.deleteComment(comment.id) })
+                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).padding(start = 52.dp).background(Color.White.copy(alpha = 0.04f)))
+                    }
+                }
+            }
+        }
+
+        // ── Bottom sheet с оценками ────────────────────────────────────
+        AnimatedVisibility(
+            visible = showRatingSheet,
+            enter = slideInVertically { it },
+            exit = slideOutVertically { it }
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                        showRatingSheet = false
+                    }
+            ) {
+                RatingBottomSheet(
+                    state = state, track = track, viewModel = viewModel,
+                    onDismiss = { showRatingSheet = false },
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RatingBottomSheet(
+    state: ReviewUiState,
+    track: Track,
+    viewModel: ReviewViewModel,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+    ) {
+        Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Оценить трек", color = ColorOnBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            state.overallScore?.let { score ->
+                Box(
+                    modifier = Modifier.background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(String.format("%.1f", score) + " / 10", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        ScoreCriterion.entries.forEach { criterion ->
+            val score = when (criterion) {
+                ScoreCriterion.RHYME -> state.rhymeScore
+                ScoreCriterion.IMAGERY -> state.imageryScore
+                ScoreCriterion.STRUCTURE -> state.structureScore
+                ScoreCriterion.CHARISMA -> state.charismaScore
+                ScoreCriterion.ATMOSPHERE -> state.atmosphereScore
+            }
+            SheetCriterionRow(label = criterion.label, score = score, onScoreChange = { viewModel.setScore(criterion, it) })
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth().height(48.dp)
+                .background(
+                    brush = if (state.isRatingComplete) Brush.linearGradient(listOf(GradientStart, GradientEnd))
+                    else Brush.linearGradient(listOf(ColorSurface, ColorSurface)),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() }, indication = null,
+                    enabled = !state.isSaving && state.isRatingComplete
+                ) {
+                    viewModel.saveRating(track.id, track.name, track.artist ?: "", track.imageUrl)
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            if (state.isSaving) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+            } else {
+                Text(
+                    if (!state.isRatingComplete) "Оцените все критерии"
+                    else if (state.existingRating != null) "Обновить оценку" else "Сохранить оценку",
+                    color = if (state.isRatingComplete) Color.White else ColorSecondary,
+                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
+        if (state.savedSuccess) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Оценка сохранена", color = GradientStart, fontSize = 13.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun SheetCriterionRow(label: String, score: Int?, onScoreChange: (Int) -> Unit) {
+    Column {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = ColorOnBackground, fontSize = 13.sp)
+            score?.let { Text("$it", color = GradientStart, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                ?: Text("—", color = ColorSecondary, fontSize = 13.sp)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            (1..10).forEach { v ->
+                val isSelected = score != null && v <= score
+                Box(
+                    modifier = Modifier
+                        .weight(1f).height(24.dp)
+                        .background(if (isSelected) GradientStart else Color.White.copy(alpha = 0.08f), RoundedCornerShape(4.dp))
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onScoreChange(v) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("$v", color = if (isSelected) Color.White else ColorSecondary, fontSize = 10.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommentRow(comment: SupabaseService.TrackCommentResponse, onDelete: () -> Unit) {
+    val dateStr = remember(comment.createdAt) {
+        try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+            val date = sdf.parse(comment.createdAt?.take(19) ?: "") ?: Date()
+            SimpleDateFormat("d MMM", Locale("ru")).format(date)
+        } catch (e: Exception) { "" }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(modifier = Modifier.size(36.dp).background(ColorSurface, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(16.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Вы", color = ColorOnBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("• $dateStr", color = ColorSecondary, fontSize = 11.sp)
+            }
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(comment.comment, color = ColorOnBackground, fontSize = 14.sp, lineHeight = 20.sp)
+        }
+        Icon(
+            Icons.Default.Delete, "Delete",
+            tint = ColorSecondary.copy(alpha = 0.3f),
+            modifier = Modifier.size(15.dp).padding(top = 2.dp)
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDelete() }
+        )
+    }
+}

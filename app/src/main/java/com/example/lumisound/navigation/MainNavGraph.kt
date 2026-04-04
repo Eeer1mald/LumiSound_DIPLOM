@@ -13,12 +13,16 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import com.example.lumisound.ui.theme.ColorBackground
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
@@ -26,6 +30,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.NavOptionsBuilder
@@ -36,6 +41,7 @@ import com.example.lumisound.feature.nowplaying.NowPlayingScreen
 import com.example.lumisound.feature.nowplaying.PlayerScreen
 import com.example.lumisound.feature.search.PlayerStateHolderEntryPoint
 import dagger.hilt.android.EntryPointAccessors
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.lumisound.feature.profile.ProfileScreen
 import com.example.lumisound.feature.ratings.RatedTrack
 import com.example.lumisound.feature.ratings.RatingsScreen
@@ -54,14 +60,21 @@ sealed class MainDestination(val route: String) {
     data object Ratings : MainDestination("ratings")
     data object Profile : MainDestination("profile")
     data object Settings : MainDestination("settings")
+    data class Review(val trackId: String = "{trackId}") : MainDestination("review/{trackId}") {
+        fun createRoute(trackId: String) = "review/$trackId"
+    }
+    data class Reviews(val trackId: String = "{trackId}") : MainDestination("reviews/{trackId}") {
+        fun createRoute(trackId: String) = "reviews/$trackId"
+    }
     data class NowPlaying(val trackId: String = "{trackId}") : MainDestination("now_playing/{trackId}") {
         fun createRoute(trackId: String) = "now_playing/$trackId"
     }
-    data class Artist(val artistName: String = "{artistName}", val artistImageUrl: String = "{artistImageUrl}") : MainDestination("artist/{artistName}/{artistImageUrl}") {
-        fun createRoute(artistName: String, artistImageUrl: String?): String {
+    data class Artist(val artistId: String = "{artistId}", val artistName: String = "{artistName}", val artistImageUrl: String = "{artistImageUrl}") : MainDestination("artist/{artistId}/{artistName}/{artistImageUrl}") {
+        fun createRoute(artistId: String?, artistName: String, artistImageUrl: String?): String {
+            val encodedId = URLEncoder.encode(artistId ?: "", StandardCharsets.UTF_8.toString())
             val encodedName = URLEncoder.encode(artistName, StandardCharsets.UTF_8.toString())
             val encodedImageUrl = URLEncoder.encode(artistImageUrl ?: "", StandardCharsets.UTF_8.toString())
-            return "artist/$encodedName/$encodedImageUrl"
+            return "artist/$encodedId/$encodedName/$encodedImageUrl"
         }
     }
 }
@@ -96,6 +109,12 @@ fun MainNavGraph(
         )
         entryPoint.playerStateHolder()
     }
+    // Глобальный PlayerViewModel для мини-плеера поверх всех экранов
+    val globalPlayerViewModel: com.example.lumisound.feature.nowplaying.PlayerViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val globalCurrentTrack by playerStateHolder.currentTrack.collectAsState()
+    val globalIsPlaying by globalPlayerViewModel.isPlaying.collectAsState()
+    // Прогресс НЕ читаем здесь — он изолирован внутри мини-плеера через derivedStateOf
+
     // Mock data
     val mockTracks = listOf(
         com.example.lumisound.feature.home.TrackPreview(
@@ -301,12 +320,17 @@ fun MainNavGraph(
         composable(
             route = MainDestination.Artist().route,
             arguments = listOf(
+                navArgument("artistId") { type = NavType.StringType },
                 navArgument("artistName") { type = NavType.StringType },
                 navArgument("artistImageUrl") { type = NavType.StringType }
             ),
             enterTransition = { fadeIn(animationSpec = tween(300)) },
             exitTransition = { fadeOut(animationSpec = tween(300)) }
         ) { backStackEntry ->
+            val artistId = backStackEntry.arguments?.getString("artistId")?.let {
+                val decoded = java.net.URLDecoder.decode(it, StandardCharsets.UTF_8.toString())
+                if (decoded.isEmpty()) null else decoded
+            }
             val artistName = backStackEntry.arguments?.getString("artistName")?.let {
                 java.net.URLDecoder.decode(it, StandardCharsets.UTF_8.toString())
             } ?: ""
@@ -314,11 +338,16 @@ fun MainNavGraph(
                 val decoded = java.net.URLDecoder.decode(it, StandardCharsets.UTF_8.toString())
                 if (decoded.isEmpty()) null else decoded
             }
-            
+
             ArtistCardScreen(
+                artistId = artistId,
                 artistName = artistName,
                 artistImageUrl = artistImageUrl,
-                onClose = { navController.popBackStack() }
+                onClose = { navController.popBackStack() },
+                onTrackClick = { track ->
+                    // Просто запускаем трек — мини-плеер обновится автоматически
+                    globalPlayerViewModel.playTrack(track)
+                }
             )
         }
         
@@ -331,7 +360,84 @@ fun MainNavGraph(
                 onBack = { navController.popBackStack() }
             )
         }
-    }
+
+        composable(
+            route = MainDestination.Review().route,
+            arguments = listOf(navArgument("trackId") { type = NavType.StringType }),
+            enterTransition = { fadeIn(animationSpec = tween(250)) },
+            exitTransition = { fadeOut(animationSpec = tween(200)) }
+        ) {
+            val currentTrack by playerStateHolder.currentTrack.collectAsState()
+            val track = currentTrack
+            if (track != null) {
+                com.example.lumisound.feature.ratings.ReviewScreen(
+                    track = track,
+                    onClose = { navController.popBackStack() },
+                    onOpenReviews = {
+                        navController.navigate(MainDestination.Reviews().createRoute(track.id))
+                    }
+                )
+            } else {
+                navController.popBackStack()
+            }
+        }
+
+        composable(
+            route = MainDestination.Reviews().route,
+            arguments = listOf(navArgument("trackId") { type = NavType.StringType }),
+            enterTransition = { fadeIn(animationSpec = tween(250)) },
+            exitTransition = { fadeOut(animationSpec = tween(200)) }
+        ) {
+            val currentTrack by playerStateHolder.currentTrack.collectAsState()
+            val track = currentTrack
+            if (track != null) {
+                com.example.lumisound.feature.ratings.ReviewsScreen(
+                    track = track,
+                    onClose = { navController.popBackStack() }
+                )
+            } else {
+                navController.popBackStack()
+            }
+        }
+        }
+
+        // Мини-плеер поверх всех экранов кроме SwipeableNavHost (там свой) и полного плеера
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = navBackStackEntry?.destination?.route
+        val isOnFullPlayer = currentRoute?.startsWith("now_playing") == true
+        val isOnMainTabs = currentRoute == "home"
+        // Показываем только на экранах артиста, настроек и тд — не на главных вкладках
+        if (globalCurrentTrack != null && !isOnFullPlayer && !isOnMainTabs) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+            ) {
+                com.example.lumisound.feature.home.components.MiniPlayer(
+                    currentTrack = globalCurrentTrack,
+                    isPlaying = globalIsPlaying,
+                    progress = androidx.compose.runtime.derivedStateOf {
+                        val pos = globalPlayerViewModel.currentPosition.value
+                        val dur = globalPlayerViewModel.duration.value
+                        if (dur > 0) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+                    }.value,
+                    onPlayPauseClick = { globalPlayerViewModel.togglePlayPause() },
+                    onTrackClick = {
+                        navController.navigate(
+                            MainDestination.NowPlaying().createRoute(globalCurrentTrack!!.id)
+                        ) { launchSingleTop = true }
+                    },
+                    onAddClick = {},
+                    onLikeClick = {},
+                    onArtistClick = { artistId, artistName, artistImageUrl ->
+                        navController.navigate(
+                            MainDestination.Artist().createRoute(artistId, artistName, artistImageUrl)
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
     }
 }
 

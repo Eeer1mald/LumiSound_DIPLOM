@@ -51,8 +51,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -81,19 +79,20 @@ fun ProfileScreen(
     navController: NavHostController,
     onRatingsClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onArtistClick: (artistId: String, artistName: String, artistImageUrl: String?) -> Unit = { _, _, _ -> },
+    onTrackClick: (trackId: String, title: String, artist: String, coverUrl: String?, previewUrl: String?) -> Unit = { _, _, _, _, _ -> },
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val avatarUri by viewModel.avatarUri.collectAsState()
     
-    val username = remember(uiState.username) { uiState.username.ifEmpty { "Пользователь" } }
-    val bio = remember(uiState.bio) { uiState.bio }
-    val hasBio = remember(bio) { bio != null }
+    val username = uiState.username.ifEmpty { "Пользователь" }
+    val bio = uiState.bio
     
-    // Оптимизация: запоминаем списки для уменьшения recompositions
-    val favoriteTracks = remember(uiState.favoriteTracks) { uiState.favoriteTracks }
-    val favoriteArtists = remember(uiState.favoriteArtists) { uiState.favoriteArtists }
+    // Запоминаем списки стабильно
+    val favoriteTracks = uiState.favoriteTracks
+    val favoriteArtists = uiState.favoriteArtists
     
     var showEditUsernameDialog by remember { mutableStateOf(false) }
     var showEditBioDialog by remember { mutableStateOf(false) }
@@ -155,11 +154,8 @@ fun ProfileScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    // Кешируем графический слой для ускорения скролла на 120Hz
-                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
-                }
                 .verticalScroll(scrollState)
+                .padding(bottom = 140.dp) // место для мини-плеера + bottom nav
         ) {
             // Header with dark background - используем remember для оптимизации
             Box(
@@ -384,11 +380,19 @@ fun ProfileScreen(
                         items(
                             items = favoriteTracks,
                             key = { it.id },
-                            contentType = { "track_card" } // Оптимизация для LazyRow
+                            contentType = { "track_card" }
                         ) { track ->
                             FavoriteTrackCard(
                                 track = track,
-                                onClick = { /* TODO: Navigate to track */ }
+                                onClick = {
+                                    onTrackClick(
+                                        track.trackId,
+                                        track.title,
+                                        track.artist,
+                                        track.coverUrl,
+                                        track.previewUrl
+                                    )
+                                }
                             )
                         }
                     }
@@ -430,11 +434,11 @@ fun ProfileScreen(
                         items(
                             items = favoriteArtists,
                             key = { it.id },
-                            contentType = { "artist_card" } // Оптимизация для LazyRow
+                            contentType = { "artist_card" }
                         ) { artist ->
                             FavoriteArtistCard(
                                 artist = artist,
-                                onClick = { /* TODO: Navigate to artist */ }
+                                onClick = { onArtistClick(artist.artistId, artist.name, artist.imageUrl) }
                             )
                         }
                     }
