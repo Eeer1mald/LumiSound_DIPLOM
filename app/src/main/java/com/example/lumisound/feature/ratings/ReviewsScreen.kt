@@ -26,11 +26,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -75,11 +77,14 @@ import java.util.Locale
 fun ReviewsScreen(
     track: Track,
     onClose: () -> Unit,
+    navController: androidx.navigation.NavHostController? = null,
     viewModel: ReviewViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val focusManager = LocalFocusManager.current
     var showAddReview by remember { mutableStateOf(false) }
+    var showRatingSheet by remember { mutableStateOf(false) }
+    var showStatsSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(track.id) { viewModel.loadForTrack(track.id) }
     LaunchedEffect(state.savedSuccess) { if (state.savedSuccess) viewModel.clearSuccess() }
@@ -104,7 +109,7 @@ fun ReviewsScreen(
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Close, "Close", tint = ColorOnBackground, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.ArrowBack, "Back", tint = ColorOnBackground, modifier = Modifier.size(18.dp))
                 }
 
                 Text(
@@ -114,23 +119,6 @@ fun ReviewsScreen(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.align(Alignment.Center)
                 )
-
-                // Кнопка добавить рецензию
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .size(36.dp)
-                        .background(
-                            if (showAddReview) GradientStart else ColorSurface,
-                            RoundedCornerShape(8.dp)
-                        )
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                            showAddReview = !showAddReview
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Edit, "Add review", tint = if (showAddReview) Color.White else GradientStart, modifier = Modifier.size(18.dp))
-                }
             }
 
             // ── Инфо о треке ───────────────────────────────────────────
@@ -157,152 +145,68 @@ fun ReviewsScreen(
                     Text(track.name, color = ColorOnBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(track.artist ?: "", color = ColorSecondary, fontSize = 12.sp, maxLines = 1)
                 }
-                // Общая оценка
-                state.existingRating?.overallScore?.let { score ->
+                // Карандаш + кружок оценки
+                val myScore = state.existingRating?.let { r ->
+                    listOfNotNull(
+                        r.rhymeScore?.toDouble(), r.imageryScore?.toDouble(),
+                        r.structureScore?.toDouble(), r.charismaScore?.toDouble(),
+                        r.atmosphereScore?.toDouble()
+                    ).takeIf { it.isNotEmpty() }?.average()
+                }
+                val displayScore = state.averageRating?.avgOverall ?: myScore
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // Карандаш — редактировать оценку
                     Box(
                         modifier = Modifier
-                            .background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(8.dp))
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                            .size(32.dp)
+                            .background(ColorSurface, CircleShape)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                showRatingSheet = true
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(String.format("%.1f", score) + "/10", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Edit, "Edit rating", tint = GradientStart, modifier = Modifier.size(15.dp))
+                    }
+                    // Кружок — просмотр оценок
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .background(
+                                brush = if (displayScore != null)
+                                    Brush.linearGradient(listOf(GradientStart, GradientEnd))
+                                else Brush.linearGradient(listOf(ColorSurface, ColorSurface)),
+                                shape = CircleShape
+                            )
+                            .border(
+                                width = if (displayScore == null) 1.dp else 0.dp,
+                                color = Color.White.copy(alpha = 0.2f), shape = CircleShape
+                            )
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                showStatsSheet = true
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (displayScore != null) {
+                            Text(
+                                String.format("%.1f", displayScore),
+                                color = Color.White, fontSize = 16.sp,
+                                fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp
+                            )
+                        } else {
+                            Icon(Icons.Default.Star, null, tint = ColorSecondary, modifier = Modifier.size(22.dp))
+                        }
                     }
                 }
             }
 
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
 
-            // ── Форма добавления рецензии ──────────────────────────────
-            if (showAddReview) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF111111))
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                ) {
-                    Text("Оценки (обязательно)", color = ColorSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
-
-                    // 5 критериев — обязательны для рецензии
-                    ScoreCriterion.entries.forEach { criterion ->
-                        val score = when (criterion) {
-                            ScoreCriterion.RHYME -> state.rhymeScore
-                            ScoreCriterion.IMAGERY -> state.imageryScore
-                            ScoreCriterion.STRUCTURE -> state.structureScore
-                            ScoreCriterion.CHARISMA -> state.charismaScore
-                            ScoreCriterion.ATMOSPHERE -> state.atmosphereScore
-                        }
-                        Column(modifier = Modifier.padding(bottom = 8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(criterion.label, color = ColorOnBackground, fontSize = 12.sp)
-                                score?.let { Text("$it", color = GradientStart, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                                    ?: Text("—", color = ColorSecondary, fontSize = 12.sp)
-                            }
-                            Spacer(modifier = Modifier.height(3.dp))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                (1..10).forEach { v ->
-                                    val isSelected = score != null && v <= score
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(22.dp)
-                                            .background(
-                                                if (isSelected) GradientStart else Color.White.copy(alpha = 0.07f),
-                                                RoundedCornerShape(4.dp)
-                                            )
-                                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                                viewModel.setScore(criterion, v)
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text("$v", color = if (isSelected) Color.White else ColorSecondary, fontSize = 9.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Итоговая оценка
-                    state.overallScore?.let { score ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Итого", color = ColorSecondary, fontSize = 13.sp)
-                            Box(
-                                modifier = Modifier
-                                    .background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Text(String.format("%.1f", score) + " / 10", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Рецензия (необязательно)", color = ColorSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
-                    OutlinedTextField(
-                        value = state.review,
-                        onValueChange = { viewModel.setReview(it) },
-                        placeholder = { Text("Поделитесь впечатлениями о треке...", color = ColorSecondary, fontSize = 13.sp) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = GradientStart,
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
-                            focusedTextColor = ColorOnBackground,
-                            unfocusedTextColor = ColorOnBackground,
-                            cursorColor = GradientStart,
-                            focusedContainerColor = Color.White.copy(alpha = 0.04f),
-                            unfocusedContainerColor = Color.White.copy(alpha = 0.04f)
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        maxLines = 5,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .background(
-                                brush = if (state.isRatingComplete)
-                                    Brush.linearGradient(listOf(GradientStart, GradientEnd))
-                                else Brush.linearGradient(listOf(ColorSurface, ColorSurface)),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                enabled = !state.isSaving && state.isRatingComplete
-                            ) {
-                                focusManager.clearFocus()
-                                viewModel.saveRating(track.id, track.name, track.artist ?: "", track.imageUrl)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (state.isSaving) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Text(
-                                if (!state.isRatingComplete) "Оцените все критерии" else "Опубликовать рецензию",
-                                color = if (state.isRatingComplete) Color.White else ColorSecondary,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                    if (state.savedSuccess) {
-                        Text("Рецензия сохранена", color = GradientStart, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(top = 4.dp), textAlign = TextAlign.Center)
-                    }
-                }
-                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
-            }
-
             // ── Список рецензий ────────────────────────────────────────
             if (state.isLoading) {
-                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(32.dp))
                 }
             } else {
@@ -333,69 +237,329 @@ fun ReviewsScreen(
                                 rating = rating,
                                 myVote = state.myVotes[rating.id],
                                 currentUserId = state.currentUserId,
-                                onVote = { vote -> viewModel.voteReview(track.id, rating.id, vote) }
+                                onVote = { vote -> viewModel.voteReview(track.id, rating.id, vote) },
+                                onProfileClick = { userId ->
+                                    navController?.navigate("profile/$userId")
+                                }
                             )
                         }
                     }
                 }
             }
 
-            // ── Поле добавления комментария снизу ─────────────────────
-            Box(
+            // ── Поле написания рецензии снизу ─────────────────────────
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF111111))
+                    .background(Color(0xFF0E0E0E))
                     .navigationBarsPadding()
                     .imePadding()
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
                 Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Box(
-                        modifier = Modifier.size(36.dp).background(ColorSurface, CircleShape),
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(ColorSurface),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(16.dp))
+                        if (!state.userAvatarUrl.isNullOrEmpty()) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(state.userAvatarUrl).crossfade(false).build(),
+                                contentDescription = "Avatar",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(16.dp))
+                        }
                     }
                     OutlinedTextField(
-                        value = state.commentText,
-                        onValueChange = { viewModel.setCommentText(it) },
-                        placeholder = { Text("Комментарий к рецензии...", color = ColorSecondary, fontSize = 13.sp) },
+                        value = state.review,
+                        onValueChange = { if (it.length <= 2000) viewModel.setReview(it) },
+                        placeholder = { Text("Написать рецензию... (нужна оценка)", color = ColorSecondary, fontSize = 13.sp) },
                         modifier = Modifier.weight(1f),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color.Transparent,
-                            unfocusedBorderColor = Color.Transparent,
-                            focusedTextColor = ColorOnBackground,
-                            unfocusedTextColor = ColorOnBackground,
+                            focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent,
+                            focusedTextColor = ColorOnBackground, unfocusedTextColor = ColorOnBackground,
                             cursorColor = GradientStart,
-                            focusedContainerColor = Color.White.copy(alpha = 0.06f),
-                            unfocusedContainerColor = Color.White.copy(alpha = 0.06f)
+                            focusedContainerColor = Color.White.copy(alpha = 0.07f),
+                            unfocusedContainerColor = Color.White.copy(alpha = 0.07f)
                         ),
                         shape = RoundedCornerShape(20.dp),
-                        maxLines = 2,
+                        maxLines = 4,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = {
-                            focusManager.clearFocus()
-                            viewModel.submitComment(track.id, track.name, track.artist ?: "", track.imageUrl)
+                            if (state.isRatingComplete && state.review.isNotBlank()) {
+                                focusManager.clearFocus()
+                                viewModel.saveRating(track.id, track.name, track.artist ?: "", track.imageUrl)
+                            }
                         })
                     )
-                    if (state.commentText.isNotBlank()) {
+                    if (state.review.isNotBlank()) {
+                        // Можно отправить если: оценки выставлены ИЛИ уже есть существующая оценка
+                        val canSend = (state.isRatingComplete || state.existingRating != null) && !state.isSaving
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = CircleShape)
-                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                    focusManager.clearFocus()
-                                    viewModel.submitComment(track.id, track.name, track.artist ?: "", track.imageUrl)
+                                .background(
+                                    brush = if (canSend)
+                                        Brush.linearGradient(listOf(GradientStart, GradientEnd))
+                                    else Brush.linearGradient(listOf(ColorSurface, ColorSurface)),
+                                    shape = CircleShape
+                                )
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    enabled = canSend
+                                ) {
+                                    if (state.isRatingComplete || state.existingRating != null) {
+                                        focusManager.clearFocus()
+                                        viewModel.saveRating(track.id, track.name, track.artist ?: "", track.imageUrl)
+                                    } else {
+                                        showRatingSheet = true
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Check, "Send", tint = Color.White, modifier = Modifier.size(18.dp))
+                            if (state.isSaving) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else if (canSend) {
+                                Icon(Icons.Default.Check, "Send", tint = Color.White, modifier = Modifier.size(18.dp))
+                            } else {
+                                Icon(Icons.Default.Star, "Rate first", tint = ColorSecondary, modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
                 }
+                if (!state.isRatingComplete && state.review.isNotBlank()) {
+                    Text(
+                        "Сначала поставьте оценку (нажмите на кружок)",
+                        color = GradientStart.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 6.dp)
+                    )
+                }
+                if (state.savedSuccess) {
+                    Text(
+                        "Рецензия опубликована",
+                        color = GradientStart,
+                        fontSize = 12.sp,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 6.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        // ── Затемнение под sheet ───────────────────────────────────
+        if (showRatingSheet || showStatsSheet) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                        showRatingSheet = false
+                        showStatsSheet = false
+                    }
+            )
+        }
+
+        // ── Bottom sheet с оценками ────────────────────────────────
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showRatingSheet,
+            enter = androidx.compose.animation.slideInVertically(
+                animationSpec = androidx.compose.animation.core.spring(
+                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                )
+            ) { it },
+            exit = androidx.compose.animation.slideOutVertically(
+                animationSpec = androidx.compose.animation.core.tween(200)
+            ) { it },
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+        ) {
+            ReviewRatingSheet(
+                state = state, track = track, viewModel = viewModel,
+                onDismiss = { showRatingSheet = false }
+            )
+        }
+
+        // ── Bottom sheet просмотра оценок ──────────────────────────
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showStatsSheet,
+            enter = androidx.compose.animation.slideInVertically(
+                animationSpec = androidx.compose.animation.core.spring(
+                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                )
+            ) { it },
+            exit = androidx.compose.animation.slideOutVertically(
+                animationSpec = androidx.compose.animation.core.tween(200)
+            ) { it },
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+        ) {
+            ReviewStatsSheet(
+                state = state,
+                onEditClick = { showStatsSheet = false; showRatingSheet = true },
+                onDismiss = { showStatsSheet = false }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReviewRatingSheet(
+    state: ReviewUiState,
+    track: Track,
+    viewModel: ReviewViewModel,
+    onDismiss: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+    ) {
+        Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Оценить трек", color = ColorOnBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            state.overallScore?.let { score ->
+                Box(modifier = Modifier.background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    Text(String.format("%.1f", score) + " / 10", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        ScoreCriterion.entries.forEach { criterion ->
+            val score = when (criterion) {
+                ScoreCriterion.RHYME -> state.rhymeScore
+                ScoreCriterion.IMAGERY -> state.imageryScore
+                ScoreCriterion.STRUCTURE -> state.structureScore
+                ScoreCriterion.CHARISMA -> state.charismaScore
+                ScoreCriterion.ATMOSPHERE -> state.atmosphereScore
+            }
+            Column {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(criterion.label, color = ColorOnBackground, fontSize = 13.sp)
+                    score?.let { Text("$it", color = GradientStart, fontSize = 13.sp, fontWeight = FontWeight.Bold) } ?: Text("—", color = ColorSecondary, fontSize = 13.sp)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                androidx.compose.material3.Slider(
+                    value = (score ?: 0).toFloat(),
+                    onValueChange = { viewModel.setScore(criterion, it.toInt().coerceIn(1, 10)) },
+                    valueRange = 1f..10f, steps = 8,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = Color.White, activeTrackColor = GradientStart,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.12f),
+                        activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent
+                    )
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Box(
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+                .background(
+                    brush = if (state.isRatingComplete) Brush.linearGradient(listOf(GradientStart, GradientEnd))
+                    else Brush.linearGradient(listOf(ColorSurface, ColorSurface)),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = !state.isSaving && state.isRatingComplete) {
+                    viewModel.saveRating(track.id, track.name, track.artist ?: "", track.imageUrl)
+                    onDismiss()
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            if (state.isSaving) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+            } else {
+                Text(
+                    if (!state.isRatingComplete) "Оцените все критерии" else if (state.existingRating != null) "Обновить оценку" else "Сохранить оценку",
+                    color = if (state.isRatingComplete) Color.White else ColorSecondary,
+                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReviewStatsSheet(
+    state: ReviewUiState,
+    onEditClick: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val myScore = state.existingRating?.let { r ->
+        listOfNotNull(
+            r.rhymeScore?.toDouble(), r.imageryScore?.toDouble(),
+            r.structureScore?.toDouble(), r.charismaScore?.toDouble(),
+            r.atmosphereScore?.toDouble()
+        ).takeIf { it.isNotEmpty() }?.average()
+    }
+    val avgScore = state.averageRating?.avgOverall
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+    ) {
+        Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Моя оценка", color = ColorOnBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            myScore?.let {
+                Box(modifier = Modifier.background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    Text(String.format("%.1f", it) + " / 10", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            } ?: Text("Нет оценки", color = ColorSecondary, fontSize = 14.sp)
+        }
+        avgScore?.let {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Средняя оценка всех: ${String.format("%.1f", it)}", color = ColorSecondary, fontSize = 13.sp)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        val criteria = listOf(
+            "Рифмы / Образы" to state.existingRating?.rhymeScore,
+            "Структура / Ритмика" to state.existingRating?.imageryScore,
+            "Реализация стиля" to state.existingRating?.structureScore,
+            "Индивидуальность" to state.existingRating?.charismaScore,
+            "Атмосфера / Вайб" to state.existingRating?.atmosphereScore
+        )
+        criteria.forEach { (label, score) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(label, color = ColorSecondary, fontSize = 12.sp, modifier = Modifier.width(130.dp))
+                Box(modifier = Modifier.weight(1f).height(4.dp).background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(2.dp))) {
+                    if (score != null) Box(modifier = Modifier.fillMaxWidth(score / 10f).height(4.dp).background(GradientStart, RoundedCornerShape(2.dp)))
+                }
+                Text(score?.toString() ?: "—", color = if (score != null) GradientStart else ColorSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Box(
+            modifier = Modifier.fillMaxWidth().height(44.dp)
+                .background(ColorSurface, RoundedCornerShape(12.dp))
+                .border(1.dp, GradientStart.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onEditClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(Icons.Default.Edit, null, tint = GradientStart, modifier = Modifier.size(16.dp))
+                Text(if (myScore != null) "Изменить оценку" else "Поставить оценку", color = GradientStart, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -406,7 +570,8 @@ private fun ReviewCard(
     rating: com.example.lumisound.data.remote.SupabaseService.TrackRatingResponse,
     myVote: Int? = null,
     currentUserId: String? = null,
-    onVote: (Int) -> Unit = {}
+    onVote: (Int) -> Unit = {},
+    onProfileClick: ((String) -> Unit)? = null
 ) {
     val dateStr = remember(rating.createdAt) {
         try {
@@ -418,6 +583,7 @@ private fun ReviewCard(
 
     val isOwn = currentUserId != null && rating.userId == currentUserId
     val displayName = rating.username?.takeIf { it.isNotBlank() } ?: if (isOwn) "Вы" else "Пользователь"
+    var showCriteria by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -434,7 +600,12 @@ private fun ReviewCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(
-                    modifier = Modifier.size(32.dp).clip(CircleShape).background(ColorSurface),
+                    modifier = Modifier.size(32.dp).clip(CircleShape).background(ColorSurface)
+                        .then(
+                            if (onProfileClick != null && rating.userId != null)
+                                Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onProfileClick(rating.userId) }
+                            else Modifier
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     if (!rating.userAvatarUrl.isNullOrEmpty()) {
@@ -445,11 +616,7 @@ private fun ReviewCard(
                             contentScale = ContentScale.Crop
                         )
                     } else {
-                        androidx.compose.material3.Icon(
-                            Icons.Default.MusicNote, null,
-                            tint = ColorSecondary,
-                            modifier = Modifier.size(14.dp)
-                        )
+                        Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(16.dp))
                     }
                 }
                 Column {
@@ -457,10 +624,17 @@ private fun ReviewCard(
                     Text(dateStr, color = ColorSecondary, fontSize = 11.sp)
                 }
             }
+            // Квадрат с оценкой — синевато-фиолетовый (отличается от кружка), нажатие раскрывает критерии
             rating.overallScore?.let { score ->
                 Box(
                     modifier = Modifier
-                        .background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(8.dp))
+                        .background(
+                            brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                            showCriteria = !showCriteria
+                        }
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Text(String.format("%.1f", score), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
@@ -468,7 +642,7 @@ private fun ReviewCard(
             }
         }
 
-        // Мини-шкалы критериев
+        // Критерии — только при showCriteria
         val criteria = listOf(
             "Рифмы / Образы" to rating.rhymeScore,
             "Структура / Ритмика" to rating.imageryScore,
@@ -477,26 +651,36 @@ private fun ReviewCard(
             "Атмосфера / Вайб" to rating.atmosphereScore
         )
         val filledCriteria = criteria.filter { it.second != null }
-        if (filledCriteria.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(10.dp))
-            filledCriteria.forEach { (label, score) ->
-                if (score != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(label, color = ColorSecondary, fontSize = 11.sp, modifier = Modifier.width(120.dp))
-                        Box(
-                            modifier = Modifier.weight(1f).height(4.dp)
-                                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(2.dp))
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showCriteria && filledCriteria.isNotEmpty(),
+            enter = androidx.compose.animation.expandVertically(
+                animationSpec = androidx.compose.animation.core.spring(
+                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                )
+            ) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)),
+            exit = androidx.compose.animation.shrinkVertically(
+                animationSpec = androidx.compose.animation.core.tween(180)
+            ) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150))
+        ) {
+            Column {
+                Spacer(modifier = Modifier.height(10.dp))
+                filledCriteria.forEach { (label, score) ->
+                    if (score != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            Text(label, color = ColorSecondary, fontSize = 11.sp, modifier = Modifier.width(120.dp))
                             Box(
-                                modifier = Modifier.fillMaxWidth(score / 10f).height(4.dp)
-                                    .background(GradientStart, RoundedCornerShape(2.dp))
-                            )
+                                modifier = Modifier.weight(1f).height(4.dp)
+                                    .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(2.dp))
+                            ) {
+                                Box(modifier = Modifier.fillMaxWidth(score / 10f).height(4.dp).background(GradientStart, RoundedCornerShape(2.dp)))
+                            }
+                            Text("$score", color = GradientStart, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
-                        Text("$score", color = GradientStart, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

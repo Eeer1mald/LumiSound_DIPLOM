@@ -177,8 +177,16 @@ class AuthRepositoryImpl @Inject constructor(
         return supabase.getTrackReviews(accessToken, audiusTrackId)
     }
 
+    override suspend fun getBestReviewsForFavorites(accessToken: String, favoriteTrackIds: List<String>, favoriteArtistNames: List<String>, limit: Int): List<SupabaseService.TrackRatingResponse> {
+        return supabase.getBestReviewsForFavorites(accessToken, favoriteTrackIds, favoriteArtistNames, limit)
+    }
+
     override suspend fun voteReview(accessToken: String, ratingId: String, vote: Int): Result<Unit> {
         return supabase.voteReview(accessToken, ratingId, vote)
+    }
+
+    override suspend fun deleteVoteReview(accessToken: String, ratingId: String): Result<Unit> {
+        return supabase.deleteVoteReview(accessToken, ratingId)
     }
 
     override suspend fun getMyVoteForReview(accessToken: String, ratingId: String): Int? {

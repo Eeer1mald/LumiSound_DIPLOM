@@ -48,7 +48,9 @@ interface AuthRepository {
 
     // Review votes
     suspend fun getTrackReviews(accessToken: String, audiusTrackId: String): List<SupabaseService.TrackRatingResponse>
+    suspend fun getBestReviewsForFavorites(accessToken: String, favoriteTrackIds: List<String>, favoriteArtistNames: List<String>, limit: Int = 30): List<SupabaseService.TrackRatingResponse>
     suspend fun voteReview(accessToken: String, ratingId: String, vote: Int): Result<Unit>
+    suspend fun deleteVoteReview(accessToken: String, ratingId: String): Result<Unit>
     suspend fun getMyVoteForReview(accessToken: String, ratingId: String): Int?
 }
 

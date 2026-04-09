@@ -27,6 +27,8 @@ data class ProfileUiState(
     val favoriteGenre: String? = null,
     val favoriteTracks: List<FavoriteTrack> = emptyList(),
     val favoriteArtists: List<FavoriteArtist> = emptyList(),
+    val commentsCount: Int = 0,
+    val reviewsCount: Int = 0,
     val isLoading: Boolean = false,
     val error: String? = null
 )
@@ -79,6 +81,7 @@ class ProfileViewModel @Inject constructor(
         if (!areArtistsLoaded) {
             loadFavoriteArtists()
         }
+        loadCounters()
     }
     
     fun loadProfile() {
@@ -201,6 +204,18 @@ class ProfileViewModel @Inject constructor(
                         android.util.Log.e("ProfileViewModel", "Ошибка загрузки артистов: ${exception.message}")
                     }
             }
+        }
+    }
+
+    fun loadCounters() {
+        val token = sessionManager.getAccessToken() ?: return
+        viewModelScope.launch {
+            val comments = authRepository.getMyComments(token, limit = 200)
+            val reviews = authRepository.getMyRatings(token, limit = 200)
+            _uiState.value = _uiState.value.copy(
+                commentsCount = comments.size,
+                reviewsCount = reviews.count { !it.review.isNullOrBlank() }
+            )
         }
     }
     

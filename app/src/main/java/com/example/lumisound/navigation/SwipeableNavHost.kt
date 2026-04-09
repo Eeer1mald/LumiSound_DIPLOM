@@ -1,11 +1,13 @@
 package com.example.lumisound.navigation
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.pager.rememberPagerState
@@ -14,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -22,16 +25,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.example.lumisound.feature.home.components.BottomNavigationBar
 import com.example.lumisound.feature.home.components.MiniPlayer
-import com.example.lumisound.feature.nowplaying.PlayerScreen
 import com.example.lumisound.feature.nowplaying.PlayerViewModel
 import com.example.lumisound.feature.search.PlayerStateHolderEntryPoint
 import com.example.lumisound.ui.theme.ColorBackground
@@ -78,23 +77,28 @@ fun SwipeableNavHost(
             }
     }
 
-    // Только currentTrack читается здесь — не вызывает частых рекомпозиций
     val currentTrack by playerStateHolder.currentTrack.collectAsState()
 
-    // Состояние анимации мини-плеера
-    var rawAnimationProgress by remember { mutableStateOf(0f) }
+    var rawAnimationProgress by remember { mutableFloatStateOf(0f) }
     var isDraggingMiniPlayer by remember { mutableStateOf(false) }
-    var lastDragVelocity by remember { mutableStateOf(0f) }
-    var targetAnimationProgress by remember { mutableStateOf(0f) }
+    var lastDragVelocity by remember { mutableFloatStateOf(0f) }
+    var targetAnimationProgress by remember { mutableFloatStateOf(0f) }
 
-    val density = LocalDensity.current
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetAnimationProgress,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "miniPlayerAnimation"
+    )
+    val animationProgress = if (isDraggingMiniPlayer) rawAnimationProgress else animatedProgress
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(ColorBackground)
     ) {
-        // HorizontalPager — изолирован от рекомпозиций плеера
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize().clipToBounds(),
@@ -108,8 +112,6 @@ fun SwipeableNavHost(
             }
         }
 
-        // Нижняя панель — изолирована в отдельном composable
-        // isPlaying, currentPosition и анимации НЕ вызывают рекомпозицию HorizontalPager
         BottomPlayerBar(
             navController = navController,
             playerViewModel = playerViewModel,
@@ -119,9 +121,9 @@ fun SwipeableNavHost(
             routes = routes,
             pagerState = pagerState,
             scope = scope,
+            animationProgress = animationProgress,
             rawAnimationProgress = rawAnimationProgress,
             isDraggingMiniPlayer = isDraggingMiniPlayer,
-            targetAnimationProgress = targetAnimationProgress,
             onRawProgressChange = { rawAnimationProgress = it },
             onDraggingChange = { isDraggingMiniPlayer = it },
             onVelocityChange = { lastDragVelocity = it },
@@ -129,53 +131,9 @@ fun SwipeableNavHost(
             getLastVelocity = { lastDragVelocity },
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
         )
-
-        // Overlay плеера при свайпе мини-плеера
-        val isOnPlayerScreen by remember {
-            derivedStateOf {
-                navController.currentBackStackEntry?.destination?.route?.startsWith("now_playing") == true
-            }
-        }
-
-        // animatedProgress вычисляется только здесь, не в HorizontalPager
-        val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
-            targetValue = targetAnimationProgress,
-            animationSpec = androidx.compose.animation.core.spring(
-                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
-            ),
-            label = "miniPlayerAnimation"
-        )
-        val animationProgress = if (isDraggingMiniPlayer) rawAnimationProgress else animatedProgress
-
-        if (currentTrack != null && animationProgress > 0f && !isOnPlayerScreen) {
-            val screenHeightPx = with(density) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx() }
-            val miniPlayerTotalHeightPx = with(density) { (72.dp + 16.dp + 56.dp).toPx() }
-            val initialPlayerTopY = (screenHeightPx - miniPlayerTotalHeightPx).coerceAtLeast(0f)
-            val playerOffsetY = initialPlayerTopY * (1f - animationProgress.coerceIn(0f, 1f))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .offset(y = with(density) { playerOffsetY.toDp() })
-                    .alpha(animationProgress)
-            ) {
-                PlayerScreen(
-                    track = currentTrack!!,
-                    navController = navController,
-                    onClose = {
-                        targetAnimationProgress = 0f
-                        rawAnimationProgress = 0f
-                        navController.popBackStack()
-                    },
-                    viewModel = playerViewModel
-                )
-            }
-        }
     }
 }
 
-// Изолированный composable для нижней панели — рекомпозиции здесь не затрагивают HorizontalPager
 @Composable
 private fun BottomPlayerBar(
     navController: NavHostController,
@@ -186,9 +144,9 @@ private fun BottomPlayerBar(
     routes: List<String>,
     pagerState: androidx.compose.foundation.pager.PagerState,
     scope: kotlinx.coroutines.CoroutineScope,
+    animationProgress: Float,
     rawAnimationProgress: Float,
     isDraggingMiniPlayer: Boolean,
-    targetAnimationProgress: Float,
     onRawProgressChange: (Float) -> Unit,
     onDraggingChange: (Boolean) -> Unit,
     onVelocityChange: (Float) -> Unit,
@@ -196,37 +154,26 @@ private fun BottomPlayerBar(
     getLastVelocity: () -> Float,
     modifier: Modifier = Modifier
 ) {
-    // isPlaying и прогресс читаются здесь — рекомпозиция изолирована
     val isPlaying by playerViewModel.isPlaying.collectAsState()
     var isLiked by remember { mutableStateOf(false) }
 
-    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = targetAnimationProgress,
-        animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
-        ),
-        label = "miniPlayerAnimation"
-    )
-    val animationProgress = if (isDraggingMiniPlayer) rawAnimationProgress else animatedProgress
+    val miniProgress by remember {
+        derivedStateOf {
+            val pos = playerViewModel.currentPosition.value
+            val dur = playerViewModel.duration.value
+            if (dur > 0) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+        }
+    }
 
     Column(modifier = modifier) {
         if (currentTrack != null) {
-            val miniProgress = remember {
-                derivedStateOf {
-                    val pos = playerViewModel.currentPosition.value
-                    val dur = playerViewModel.duration.value
-                    if (dur > 0) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
-                }
-            }.value
-
             MiniPlayer(
                 currentTrack = currentTrack,
                 isPlaying = isPlaying,
                 progress = miniProgress,
                 onPlayPauseClick = { playerViewModel.togglePlayPause() },
                 onTrackClick = {
-                    if (animationProgress == 0f && !isDraggingMiniPlayer) {
+                    if (animationProgress < 0.05f && !isDraggingMiniPlayer) {
                         navController.currentBackStackEntry
                             ?.savedStateHandle
                             ?.set("playerSourceRoute", localCurrentRoute)
@@ -259,7 +206,7 @@ private fun BottomPlayerBar(
                         var finalProgress = currentProgress
 
                         if (velocity > 15f && currentProgress > 0.02f) {
-                            val screenHeight = 2400f // приближение
+                            val screenHeight = 2400f
                             val normalizedVelocity = velocity / screenHeight
                             var progress = currentProgress
                             var currentVelocity = normalizedVelocity * 16f * 1.5f
@@ -312,3 +259,4 @@ private fun BottomPlayerBar(
         )
     }
 }
+

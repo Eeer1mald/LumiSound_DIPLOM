@@ -766,42 +766,38 @@ class SupabaseService @Inject constructor(
     suspend fun getTrackAverageRating(accessToken: String, audiusTrackId: String): TrackAverageRating? {
         return try {
             val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
-            // Получаем все оценки по треку и считаем средние
+            // Читаем из VIEW track_ratings_avg — видит все оценки всех пользователей
             val response = http.get {
-                url("$baseUrl/rest/v1/track_ratings")
+                url("$baseUrl/rest/v1/track_ratings_avg")
                 header("apikey", anonKey)
-                // Используем anon key — политика read_all USING (true) работает для всех
                 header(HttpHeaders.Authorization, "Bearer $anonKey")
                 parameter("audius_track_id", "eq.$audiusTrackId")
-                parameter("select", "rhyme_score,imagery_score,structure_score,charisma_score,atmosphere_score,overall_score")
+                parameter("limit", "1")
             }
             if (!response.status.isSuccess()) return null
-            val ratings = json.decodeFromString<List<TrackRatingResponse>>(response.bodyAsText())
-            Log.d("SupabaseService", "Получено ${ratings.size} оценок для трека $audiusTrackId")
-            if (ratings.isEmpty()) return null
-            // Фильтруем только оценки с хотя бы одним заполненным критерием
-            val validRatings = ratings.filter { r ->
-                r.rhymeScore != null || r.imageryScore != null || r.structureScore != null ||
-                r.charismaScore != null || r.atmosphereScore != null
-            }
-            if (validRatings.isEmpty()) return null
+            val text = response.bodyAsText()
+            Log.d("SupabaseService", "track_ratings_avg: $text")
+            if (text.isBlank() || text == "[]") return null
+            @Serializable data class ViewRow(
+                @SerialName("avg_rhyme") val avgRhyme: Double? = null,
+                @SerialName("avg_imagery") val avgImagery: Double? = null,
+                @SerialName("avg_structure") val avgStructure: Double? = null,
+                @SerialName("avg_charisma") val avgCharisma: Double? = null,
+                @SerialName("avg_atmosphere") val avgAtmosphere: Double? = null,
+                @SerialName("avg_overall") val avgOverall: Double? = null,
+                @SerialName("rating_count") val ratingCount: Int = 0
+            )
+            val rows = json.decodeFromString<List<ViewRow>>(text)
+            val row = rows.firstOrNull() ?: return null
+            if (row.ratingCount == 0) return null
             TrackAverageRating(
-                avgRhyme = validRatings.mapNotNull { it.rhymeScore?.toDouble() }.takeIf { it.isNotEmpty() }?.average(),
-                avgImagery = validRatings.mapNotNull { it.imageryScore?.toDouble() }.takeIf { it.isNotEmpty() }?.average(),
-                avgStructure = validRatings.mapNotNull { it.structureScore?.toDouble() }.takeIf { it.isNotEmpty() }?.average(),
-                avgCharisma = validRatings.mapNotNull { it.charismaScore?.toDouble() }.takeIf { it.isNotEmpty() }?.average(),
-                avgAtmosphere = validRatings.mapNotNull { it.atmosphereScore?.toDouble() }.takeIf { it.isNotEmpty() }?.average(),
-                avgOverall = validRatings.mapNotNull { r ->
-                    val scores = listOfNotNull(
-                        r.rhymeScore?.toDouble(),
-                        r.imageryScore?.toDouble(),
-                        r.structureScore?.toDouble(),
-                        r.charismaScore?.toDouble(),
-                        r.atmosphereScore?.toDouble()
-                    )
-                    if (scores.isNotEmpty()) scores.average() else null
-                }.takeIf { it.isNotEmpty() }?.average(),
-                ratingCount = validRatings.size
+                avgRhyme = row.avgRhyme,
+                avgImagery = row.avgImagery,
+                avgStructure = row.avgStructure,
+                avgCharisma = row.avgCharisma,
+                avgAtmosphere = row.avgAtmosphere,
+                avgOverall = row.avgOverall,
+                ratingCount = row.ratingCount
             )
         } catch (e: Exception) {
             Log.e("SupabaseService", "Ошибка получения средних оценок: ${e.message}")
@@ -919,7 +915,6 @@ class SupabaseService @Inject constructor(
             val response = http.get {
                 url("$baseUrl/rest/v1/track_ratings")
                 header("apikey", anonKey)
-                // anon key для чтения всех рецензий (read_all policy)
                 header(HttpHeaders.Authorization, "Bearer $anonKey")
                 parameter("audius_track_id", "eq.$audiusTrackId")
                 parameter("review", "not.is.null")
@@ -927,6 +922,101 @@ class SupabaseService @Inject constructor(
             }
             if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
         } catch (e: Exception) { emptyList() }
+    }
+
+    // Лучшие рецензии по любимым трекам (приоритет) и артистам
+    suspend fun getBestReviewsForFavorites(
+        accessToken: String,
+        favoriteTrackIds: List<String>,
+        favoriteArtistNames: List<String>,
+        limit: Int = 30
+    ): List<TrackRatingResponse> {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val all = mutableListOf<TrackRatingResponse>()
+
+            // Рецензии по любимым трекам
+            if (favoriteTrackIds.isNotEmpty()) {
+                val ids = favoriteTrackIds.joinToString(",")
+                val r = http.get {
+                    url("$baseUrl/rest/v1/track_ratings")
+                    header("apikey", anonKey)
+                    header(HttpHeaders.Authorization, "Bearer $anonKey")
+                    parameter("audius_track_id", "in.($ids)")
+                    parameter("review", "not.is.null")
+                    parameter("order", "reputation.desc,overall_score.desc")
+                    parameter("limit", limit.toString())
+                }
+                if (r.status.isSuccess()) all += json.decodeFromString<List<TrackRatingResponse>>(r.bodyAsText())
+            }
+
+            // Рецензии по любимым артистам (меньший приоритет)
+            if (favoriteArtistNames.isNotEmpty()) {
+                favoriteArtistNames.take(5).forEach { artistName ->
+                    val r = http.get {
+                        url("$baseUrl/rest/v1/track_ratings")
+                        header("apikey", anonKey)
+                        header(HttpHeaders.Authorization, "Bearer $anonKey")
+                        parameter("track_artist", "ilike.*${artistName.take(20)}*")
+                        parameter("review", "not.is.null")
+                        parameter("order", "reputation.desc,overall_score.desc")
+                        parameter("limit", "10")
+                    }
+                    if (r.status.isSuccess()) {
+                        val items = json.decodeFromString<List<TrackRatingResponse>>(r.bodyAsText())
+                        // Не дублируем треки из любимых
+                        all += items.filter { item -> favoriteTrackIds.none { item.audiusTrackId == it } }
+                    }
+                }
+            }
+
+            // Сортируем: любимые треки выше, потом по репутации
+            all.distinctBy { it.id }
+                .sortedWith(compareByDescending<TrackRatingResponse> {
+                    if (favoriteTrackIds.contains(it.audiusTrackId)) 1 else 0
+                }.thenByDescending { it.reputation }.thenByDescending { it.overallScore ?: 0.0 })
+                .take(limit)
+        } catch (e: Exception) {
+            Log.e("SupabaseService", "getBestReviewsForFavorites error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    suspend fun deleteVoteReview(accessToken: String, ratingId: String): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id
+                ?: throw IllegalStateException("Не удалось получить user ID")
+            val response = http.delete {
+                url("$baseUrl/rest/v1/review_votes?user_id=eq.$userId&rating_id=eq.$ratingId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+            }
+            // Пересчитываем репутацию
+            if (response.status.isSuccess()) {
+                val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+                val countResponse = http.get {
+                    url("$baseUrl/rest/v1/review_votes")
+                    header("apikey", anonKey)
+                    header(HttpHeaders.Authorization, "Bearer $accessToken")
+                    parameter("rating_id", "eq.$ratingId")
+                    parameter("select", "vote")
+                }
+                if (countResponse.status.isSuccess()) {
+                    @Serializable data class VoteRow(val vote: Int)
+                    val votes = json.decodeFromString<List<VoteRow>>(countResponse.bodyAsText())
+                    val reputation = votes.sumOf { it.vote }
+                    http.post {
+                        url("$baseUrl/rest/v1/track_ratings")
+                        header("apikey", anonKey)
+                        header(HttpHeaders.Authorization, "Bearer $accessToken")
+                        header("Prefer", "resolution=merge-duplicates,return=minimal")
+                        parameter("on_conflict", "id")
+                        contentType(ContentType.Application.Json)
+                        setBody("""[{"id":"$ratingId","reputation":$reputation}]""")
+                    }
+                }
+            }
+        }
     }
 
     suspend fun voteReview(accessToken: String, ratingId: String, vote: Int): Result<Unit> {

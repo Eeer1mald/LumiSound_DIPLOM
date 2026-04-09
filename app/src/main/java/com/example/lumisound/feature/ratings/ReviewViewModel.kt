@@ -70,7 +70,7 @@ class ReviewViewModel @Inject constructor(
                 structureScore = existing?.structureScore,
                 charismaScore = existing?.charismaScore,
                 atmosphereScore = existing?.atmosphereScore,
-                review = existing?.review ?: "",
+                review = "", // поле ввода всегда пустое при открытии
                 comments = comments,
                 userAvatarUrl = profile?.avatarUrl,
                 currentUserId = sessionManager.getUserId()
@@ -128,7 +128,8 @@ class ReviewViewModel @Inject constructor(
                     isSaving = false,
                     savedSuccess = true,
                     existingRating = saved,
-                    averageRating = newAverage
+                    averageRating = newAverage,
+                    review = "" // очищаем поле после сохранения
                 )
             }.onFailure { e ->
                 _state.value = _state.value.copy(isSaving = false, error = e.message)
@@ -184,18 +185,22 @@ class ReviewViewModel @Inject constructor(
     fun voteReview(audiusTrackId: String, ratingId: String, vote: Int) {
         val token = sessionManager.getAccessToken() ?: return
         viewModelScope.launch {
-            authRepository.voteReview(token, ratingId, vote).onSuccess {
-                // Обновляем локально
-                val currentVote = _state.value.myVotes[ratingId]
-                val newVote = if (currentVote == vote) null else vote // повторное нажатие = отмена
+            val currentVote = _state.value.myVotes[ratingId]
+            val isToggleOff = currentVote == vote
+
+            val result = if (isToggleOff) {
+                authRepository.deleteVoteReview(token, ratingId)
+            } else {
+                authRepository.voteReview(token, ratingId, vote)
+            }
+
+            result.onSuccess {
+                val newVote = if (isToggleOff) null else vote
                 val newVotes = _state.value.myVotes.toMutableMap()
                 if (newVote == null) newVotes.remove(ratingId) else newVotes[ratingId] = newVote
-                // Пересчитываем репутацию локально
+                val delta = (newVote ?: 0) - (currentVote ?: 0)
                 val reviews = _state.value.reviews.map { r ->
-                    if (r.id == ratingId) {
-                        val delta = (newVote ?: 0) - (currentVote ?: 0)
-                        r.copy(reputation = r.reputation + delta)
-                    } else r
+                    if (r.id == ratingId) r.copy(reputation = r.reputation + delta) else r
                 }.sortedByDescending { it.reputation }
                 _state.value = _state.value.copy(myVotes = newVotes, reviews = reviews)
             }

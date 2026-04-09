@@ -16,24 +16,18 @@ data class RatingsUiState(
     val isLoading: Boolean = false,
     val ratings: List<SupabaseService.TrackRatingResponse> = emptyList(),
     val comments: List<SupabaseService.TrackCommentResponse> = emptyList(),
-    val activeTab: RatingsTab = RatingsTab.RATINGS,
-    val filterScore: Int? = null,
+    val bestReviews: List<SupabaseService.TrackRatingResponse> = emptyList(),
+    val myReviews: List<SupabaseService.TrackRatingResponse> = emptyList(),
+    val activeTab: RatingsTab = RatingsTab.BEST,
     val error: String? = null
 ) {
-    val filteredRatings: List<SupabaseService.TrackRatingResponse>
-        get() = if (filterScore == null) ratings
-        else ratings.filter { (it.overallScore ?: 0.0) >= filterScore }
-
     val averageScore: Double?
         get() = ratings.mapNotNull { it.overallScore }.takeIf { it.isNotEmpty() }?.average()
-
-    val topRatedCount: Int
-        get() = ratings.count { (it.overallScore ?: 0.0) >= 8.0 }
 }
 
 enum class RatingsTab(val label: String) {
-    RATINGS("Оценки"),
-    COMMENTS("Комментарии")
+    BEST("Лучшие рецензии"),
+    MINE("Ваши рецензии")
 }
 
 @HiltViewModel
@@ -51,17 +45,34 @@ class RatingsViewModel @Inject constructor(
         val token = sessionManager.getAccessToken() ?: return
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
+
+            // Мои оценки и комментарии
             val ratings = authRepository.getMyRatings(token)
             val comments = authRepository.getMyComments(token)
-            _state.value = _state.value.copy(isLoading = false, ratings = ratings, comments = comments)
+
+            // Мои рецензии (с текстом)
+            val myReviews = ratings.filter { !it.review.isNullOrBlank() }
+                .sortedByDescending { it.reputation }
+
+            // Любимые треки и артисты для "Лучших рецензий"
+            val favTracks = authRepository.getFavoriteTracks(token).getOrDefault(emptyList())
+            val favArtists = authRepository.getFavoriteArtists(token).getOrDefault(emptyList())
+            val favTrackIds = favTracks.map { it.trackId }
+            val favArtistNames = favArtists.map { it.artistName }
+
+            val bestReviews = authRepository.getBestReviewsForFavorites(token, favTrackIds, favArtistNames)
+
+            _state.value = _state.value.copy(
+                isLoading = false,
+                ratings = ratings,
+                comments = comments,
+                myReviews = myReviews,
+                bestReviews = bestReviews
+            )
         }
     }
 
     fun setTab(tab: RatingsTab) {
         _state.value = _state.value.copy(activeTab = tab)
-    }
-
-    fun setFilter(score: Int?) {
-        _state.value = _state.value.copy(filterScore = score)
     }
 }

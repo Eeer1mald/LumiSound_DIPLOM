@@ -1,6 +1,10 @@
 package com.example.lumisound.feature.nowplaying
 
 import android.app.Activity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,6 +47,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -108,7 +113,8 @@ fun PlayerScreen(
     previousRoute: String? = null,
     navController: androidx.navigation.NavHostController? = null,
     userName: String = "Александр",
-    viewModel: PlayerViewModel = hiltViewModel()
+    viewModel: PlayerViewModel = hiltViewModel(),
+    reviewViewModel: com.example.lumisound.feature.ratings.ReviewViewModel = hiltViewModel()
 ) {
     val view = LocalView.current
     val context = LocalContext.current
@@ -130,7 +136,29 @@ fun PlayerScreen(
     val duration by viewModel.duration.collectAsState()
     var isLiked by remember { mutableStateOf(false) }
 
-    LaunchedEffect(track.id) { viewModel.syncPlayerState() }
+    LaunchedEffect(track.id) {
+        viewModel.syncPlayerState()
+        reviewViewModel.loadForTrack(track.id)
+    }
+
+    // Плавающие комментарии
+    val reviewState by reviewViewModel.state.collectAsState()
+    var floatingCommentIndex by remember { mutableIntStateOf(-1) }
+    var showFloatingComment by remember { mutableStateOf(false) }
+
+    LaunchedEffect(reviewState.comments) {
+        if (reviewState.comments.isNotEmpty()) {
+            while (true) {
+                delay(4000)
+                val idx = (0 until reviewState.comments.size).random()
+                floatingCommentIndex = idx
+                showFloatingComment = true
+                delay(3000)
+                showFloatingComment = false
+                delay(1000)
+            }
+        }
+    }
 
     // Waveform — генерируем один раз для трека
     val waveform = remember(track.id) { generateWaveform(track.id) }
@@ -204,13 +232,9 @@ fun PlayerScreen(
                             indication = null
                         ) {
                             isDraggingToClose = false
-                            targetCloseProgress = 1f
-                            closeScope.launch {
-                                delay(260)
-                                onClose()
-                            }
-                        },
-                    contentAlignment = Alignment.Center
+                            closeProgress = 0f
+                            onClose()
+                        },                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
@@ -265,7 +289,7 @@ fun PlayerScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    .padding(top = 20.dp, bottom = 24.dp)
+                    .padding(top = 16.dp, bottom = 24.dp)
             ) {
                 // Название и артист
                 Column(
@@ -300,7 +324,56 @@ fun PlayerScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // ── Плавающий комментарий ──────────────────────────────
+                val floatingComment = if (floatingCommentIndex >= 0 && floatingCommentIndex < reviewState.comments.size)
+                    reviewState.comments[floatingCommentIndex] else null
+                val commentAlpha by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = if (showFloatingComment && floatingComment != null) 1f else 0f,
+                    animationSpec = androidx.compose.animation.core.tween(600),
+                    label = "commentAlpha"
+                )
+
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (floatingComment != null) {
+                        Row(
+                            modifier = Modifier
+                                .alpha(commentAlpha)
+                                .background(ColorSurface.copy(alpha = 0.9f), RoundedCornerShape(18.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier.size(20.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (!floatingComment.userAvatarUrl.isNullOrEmpty()) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(context).data(floatingComment.userAvatarUrl).crossfade(false).build(),
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(10.dp))
+                                }
+                            }
+                            Text(
+                                text = floatingComment.comment.take(45) + if (floatingComment.comment.length > 45) "..." else "",
+                                color = ColorOnBackground,
+                                fontSize = 12.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // ── Waveform прогресс-бар ──────────────────────────────
                 val progress = if (duration > 0) (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
@@ -310,7 +383,7 @@ fun PlayerScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp)
+                        .height(48.dp)
                         .pointerInput(duration) {
                             detectTapGestures { offset ->
                                 if (duration > 0) {
@@ -335,8 +408,6 @@ fun PlayerScreen(
                         val barWidth = (totalWidth / barCount) * 0.55f
                         val gap = (totalWidth / barCount) * 0.45f
                         val progressX = totalWidth * progress
-
-                        // Waveform
                         waveform.forEachIndexed { i, amplitude ->
                             val x = i * (barWidth + gap)
                             val barHeight = (amplitude * totalHeight * 0.85f).coerceAtLeast(3.dp.toPx())
@@ -352,133 +423,66 @@ fun PlayerScreen(
                     }
                 }
 
-                // Маркер + таймер — единый блок
+                // Маркер + таймер
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    // Маркер — маленькая белая палочка под waveform
-                    BoxWithConstraints(
-                        modifier = Modifier.fillMaxWidth().height(8.dp)
-                    ) {
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(8.dp)) {
                         val markerFraction = progress.coerceIn(0f, 1f)
                         val markerOffsetDp = (maxWidth - 3.dp) * markerFraction
-                        Box(
-                            modifier = Modifier
-                                .padding(start = markerOffsetDp)
-                                .size(width = 3.dp, height = 8.dp)
-                                .background(Color.White, RoundedCornerShape(2.dp))
-                        )
+                        Box(modifier = Modifier.padding(start = markerOffsetDp).size(width = 3.dp, height = 8.dp).background(Color.White, RoundedCornerShape(2.dp)))
                     }
                 }
-
                 Spacer(modifier = Modifier.height(2.dp))
-
-                // Таймер — левая цифра двигается с прогрессом
-                BoxWithConstraints(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                     val textWidthDp = 32.dp
-                    val leftOffset = ((maxWidth - textWidthDp) * progress.coerceIn(0f, 1f))
-                        .coerceIn(0.dp, maxWidth - textWidthDp)
-
-                    Text(
-                        text = formatTime(currentPosition),
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        modifier = Modifier.padding(start = leftOffset)
-                    )
-                    Text(
-                        text = formatTime(duration),
-                        color = ColorSecondary,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        modifier = Modifier.align(Alignment.CenterEnd)
-                    )
+                    val leftOffset = ((maxWidth - textWidthDp) * progress.coerceIn(0f, 1f)).coerceIn(0.dp, maxWidth - textWidthDp)
+                    Text(text = formatTime(currentPosition), color = Color.White, fontSize = 11.sp, maxLines = 1, modifier = Modifier.padding(start = leftOffset))
+                    Text(text = formatTime(duration), color = ColorSecondary, fontSize = 11.sp, maxLines = 1, modifier = Modifier.align(Alignment.CenterEnd))
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
-                // ── Кнопки управления ──────────────────────────────────
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // ── Кнопки управления — внизу ──────────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier.size(44.dp).clickable(
-                            interactionSource = remember { MutableInteractionSource() }, indication = null
-                        ) { isLiked = !isLiked },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Like",
-                            tint = if (isLiked) GradientStart else ColorSecondary,
-                            modifier = Modifier.size(24.dp)
-                        )
+                    Box(modifier = Modifier.size(44.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { isLiked = !isLiked }, contentAlignment = Alignment.Center) {
+                        Icon(imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = "Like", tint = if (isLiked) GradientStart else ColorSecondary, modifier = Modifier.size(24.dp))
                     }
-
-                    Box(
-                        modifier = Modifier.size(56.dp).clickable(
-                            interactionSource = remember { MutableInteractionSource() }, indication = null
-                        ) { viewModel.previousTrack() },
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(modifier = Modifier.size(56.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.previousTrack() }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.SkipPrevious, "Previous", tint = ColorOnBackground, modifier = Modifier.size(36.dp))
                     }
-
                     Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .shadow(elevation = 20.dp, shape = CircleShape, spotColor = GradientStart.copy(alpha = 0.6f))
-                            .background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = CircleShape)
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                viewModel.togglePlayPause()
-                            },
+                        modifier = Modifier.size(72.dp).shadow(elevation = 20.dp, shape = CircleShape, spotColor = GradientStart.copy(alpha = 0.6f)).background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = CircleShape).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.togglePlayPause() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(36.dp)
-                        )
+                        Icon(imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (isPlaying) "Pause" else "Play", tint = Color.White, modifier = Modifier.size(36.dp))
                     }
-
-                    Box(
-                        modifier = Modifier.size(56.dp).clickable(
-                            interactionSource = remember { MutableInteractionSource() }, indication = null
-                        ) { viewModel.nextTrack() },
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(modifier = Modifier.size(56.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.nextTrack() }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.SkipNext, "Next", tint = ColorOnBackground, modifier = Modifier.size(36.dp))
                     }
-
-                    Box(
-                        modifier = Modifier.size(44.dp).clickable(
-                            interactionSource = remember { MutableInteractionSource() }, indication = null
-                        ) {
-                            navController?.navigate(
-                                com.example.lumisound.navigation.MainDestination.Review().createRoute(track.id)
-                            )
-                        },
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(modifier = Modifier.size(44.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                        navController?.navigate(com.example.lumisound.navigation.MainDestination.Review().createRoute(track.id))
+                    }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.ChatBubbleOutline, "Review", tint = ColorSecondary, modifier = Modifier.size(24.dp))
                     }
                 }
             }
         }
 
-        // Зона свайпа вниз — только правые 2/3 экрана, чтобы не перекрывать кнопку закрытия
+        // Зона свайпа вниз для закрытия
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.7f) // только правые 70% ширины
+                .fillMaxWidth(0.7f)
                 .height(160.dp)
-                .align(Alignment.TopEnd) // прижимаем вправо
+                .align(Alignment.TopEnd)
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onDragStart = { isDraggingToClose = true },
                         onDragEnd = {
                             if (closeProgress >= 0.4f) {
+                                closeProgress = 0f
                                 isDraggingToClose = false
                                 onClose()
                             } else {

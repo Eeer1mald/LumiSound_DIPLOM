@@ -116,22 +116,40 @@ fun ReviewScreen(
                             Icon(Icons.Default.Close, "Close", tint = ColorOnBackground, modifier = Modifier.size(18.dp))
                         }
 
+                        // Счётчик комментариев — слева, со склонением
+                        val count = state.comments.size
+                        val word = when {
+                            count % 100 in 11..19 -> "комментариев"
+                            count % 10 == 1 -> "комментарий"
+                            count % 10 in 2..4 -> "комментария"
+                            else -> "комментариев"
+                        }
                         Text(
-                            "${state.comments.size} комментариев",
+                            "$count $word",
                             color = ColorOnBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.align(Alignment.Center)
+                            modifier = Modifier.align(Alignment.CenterStart).padding(start = 52.dp)
                         )
 
-                        // Кнопка рецензий — компактная иконка
+                        // Кнопка рецензий — заметная с текстом, справа
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
-                                .size(36.dp)
-                                .background(ColorSurface, CircleShape)
-                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onOpenReviews() },
+                                .background(
+                                    brush = Brush.linearGradient(listOf(GradientStart.copy(alpha = 0.15f), GradientEnd.copy(alpha = 0.15f))),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                                .border(1.dp, GradientStart.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onOpenReviews() }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Star, "Reviews", tint = GradientStart, modifier = Modifier.size(18.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(Icons.Default.Star, "Reviews", tint = GradientStart, modifier = Modifier.size(12.dp))
+                                Text("Рецензии", color = GradientStart, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
 
@@ -213,7 +231,7 @@ fun ReviewScreen(
                                     Text(
                                         String.format("%.1f", displayScore),
                                         color = Color.White,
-                                        fontSize = 13.sp,
+                                        fontSize = 16.sp,
                                         fontWeight = FontWeight.Black,
                                         letterSpacing = (-0.5).sp
                                     )
@@ -266,7 +284,7 @@ fun ReviewScreen(
 
                     OutlinedTextField(
                         value = state.commentText,
-                        onValueChange = { viewModel.setCommentText(it) },
+                        onValueChange = { if (it.length <= 100) viewModel.setCommentText(it) },
                         placeholder = { Text("Комментарий...", color = ColorSecondary, fontSize = 13.sp) },
                         modifier = Modifier.weight(1f),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -739,7 +757,7 @@ private fun CommentRow(
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.Top
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier

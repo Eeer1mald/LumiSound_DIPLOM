@@ -52,8 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
-import coil.compose.SubcomposeAsyncImage
-import coil.compose.SubcomposeAsyncImageContent
+import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.lumisound.data.model.Track
 import com.example.lumisound.feature.search.getPlayerStateHolder
@@ -460,30 +459,14 @@ private fun TrendingTrackItem(
                     .background(ColorSurface) // Тёмно-серый вместо градиента
             ) {
                 if (track.coverUrl != null && track.coverUrl.isNotEmpty()) {
-                    SubcomposeAsyncImage(
+                    AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(track.coverUrl)
-                            .crossfade(false) // Отключено для лучшей производительности
+                            .crossfade(false)
                             .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                        error = {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MusicNote,
-                                    contentDescription = null,
-                                    tint = ColorSecondary.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        },
-                        success = {
-                            SubcomposeAsyncImageContent()
-                        }
+                        contentScale = ContentScale.Crop
                     )
                 } else {
                     Box(
@@ -608,30 +591,14 @@ private fun SearchResultTrackItem(
                     .background(color = coverColor) // Однотонный цвет вместо градиента
             ) {
                 if (track.imageUrl != null && track.imageUrl.isNotEmpty()) {
-                    SubcomposeAsyncImage(
+                    AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(track.imageUrl)
-                            .crossfade(false) // Отключено для лучшей производительности
+                            .crossfade(false)
                             .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                        error = {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MusicNote,
-                                    contentDescription = null,
-                                    tint = ColorSecondary.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                        },
-                        success = {
-                            SubcomposeAsyncImageContent()
-                        }
+                        contentScale = ContentScale.Crop
                     )
                 } else {
                     Box(

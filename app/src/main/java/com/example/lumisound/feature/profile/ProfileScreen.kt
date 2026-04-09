@@ -329,7 +329,7 @@ fun ProfileScreen(
                 }
             }
 
-            // Stats Grid (only tracks and ratings)
+            // Stats Grid — комментарии и рецензии
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -338,15 +338,15 @@ fun ProfileScreen(
             ) {
                 StatBox(
                     icon = Icons.Default.MusicNote,
-                    value = "247",
-                    label = "треков",
+                    value = uiState.commentsCount.toString(),
+                    label = "комментариев",
                     iconColor = GradientStart,
                     modifier = Modifier.weight(1f)
                 )
                 StatBox(
                     icon = Icons.Default.Star,
-                    value = "12",
-                    label = "оценок",
+                    value = uiState.reviewsCount.toString(),
+                    label = "рецензий",
                     iconColor = ColorAccentSecondary,
                     modifier = Modifier.weight(1f)
                 )
