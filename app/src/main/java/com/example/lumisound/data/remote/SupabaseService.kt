@@ -547,6 +547,31 @@ class SupabaseService @Inject constructor(
         }
     }
     
+    @Serializable
+    data class TrackHistoryResponse(
+        val id: String,
+        @SerialName("track_id") val trackId: String,
+        @SerialName("track_title") val trackTitle: String,
+        @SerialName("track_artist") val trackArtist: String,
+        @SerialName("played_at") val playedAt: String? = null
+    )
+
+    suspend fun getTrackHistory(accessToken: String, limit: Int = 200): List<TrackHistoryResponse> {
+        return try {
+            val userId = getUser(accessToken)?.id ?: return emptyList()
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/track_history")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("user_id", "eq.$userId")
+                parameter("order", "played_at.desc")
+                parameter("limit", limit.toString())
+            }
+            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
     // ========== TRACK PLAY COUNT TRACKING ==========
     suspend fun incrementTrackPlayCount(
         accessToken: String,

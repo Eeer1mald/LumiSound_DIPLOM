@@ -153,6 +153,7 @@ fun ReviewsScreen(
                         r.atmosphereScore?.toDouble()
                     ).takeIf { it.isNotEmpty() }?.average()
                 }
+                // Кружок показывает среднюю всех пользователей (или свою если средней нет)
                 val displayScore = state.averageRating?.avgOverall ?: myScore
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -237,6 +238,7 @@ fun ReviewsScreen(
                                 rating = rating,
                                 myVote = state.myVotes[rating.id],
                                 currentUserId = state.currentUserId,
+                                isVoting = state.votingIds.contains(rating.id),
                                 onVote = { vote -> viewModel.voteReview(track.id, rating.id, vote) },
                                 onProfileClick = { userId ->
                                     navController?.navigate("profile/$userId")
@@ -570,6 +572,7 @@ private fun ReviewCard(
     rating: com.example.lumisound.data.remote.SupabaseService.TrackRatingResponse,
     myVote: Int? = null,
     currentUserId: String? = null,
+    isVoting: Boolean = false,
     onVote: (Int) -> Unit = {},
     onProfileClick: ((String) -> Unit)? = null
 ) {
@@ -624,12 +627,12 @@ private fun ReviewCard(
                     Text(dateStr, color = ColorSecondary, fontSize = 11.sp)
                 }
             }
-            // Квадрат с оценкой — синевато-фиолетовый (отличается от кружка), нажатие раскрывает критерии
+            // Квадрат с оценкой — стальной синий, отличается от кружка
             rating.overallScore?.let { score ->
                 Box(
                     modifier = Modifier
                         .background(
-                            brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)),
+                            brush = Brush.linearGradient(listOf(Color(0xFF2979FF), Color(0xFF00B0FF))),
                             shape = RoundedCornerShape(8.dp)
                         )
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
@@ -709,12 +712,23 @@ private fun ReviewCard(
                         if (myVote == 1) Color(0xFF2ECC71).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.06f),
                         RoundedCornerShape(6.dp)
                     )
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                        onVote(1)
-                    },
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        enabled = !isVoting
+                    ) { onVote(1) },
                 contentAlignment = Alignment.Center
             ) {
-                Text("↑", color = if (myVote == 1) Color(0xFF2ECC71) else ColorSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "↑",
+                    color = when {
+                        isVoting -> ColorSecondary.copy(alpha = 0.4f)
+                        myVote == 1 -> Color(0xFF2ECC71)
+                        else -> ColorSecondary
+                    },
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
             Spacer(modifier = Modifier.width(6.dp))
@@ -744,12 +758,23 @@ private fun ReviewCard(
                         if (myVote == -1) Color(0xFFE74C3C).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.06f),
                         RoundedCornerShape(6.dp)
                     )
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                        onVote(-1)
-                    },
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        enabled = !isVoting
+                    ) { onVote(-1) },
                 contentAlignment = Alignment.Center
             ) {
-                Text("↓", color = if (myVote == -1) Color(0xFFE74C3C) else ColorSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "↓",
+                    color = when {
+                        isVoting -> ColorSecondary.copy(alpha = 0.4f)
+                        myVote == -1 -> Color(0xFFE74C3C)
+                        else -> ColorSecondary
+                    },
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

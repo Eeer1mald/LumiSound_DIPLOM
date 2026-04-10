@@ -13,15 +13,22 @@ class AuthRepositoryImpl @Inject constructor(
     private val pendingUsernameStore: PendingUsernameStore,
     private val sessionManager: SessionManager
 ) : AuthRepository {
+
+    // In-memory кэш — заполняется при предзагрузке
+    private var cachedProfile: SupabaseService.ProfileResponse? = null
+    private var cachedMyRatings: List<SupabaseService.TrackRatingResponse>? = null
+    private var cachedMyComments: List<SupabaseService.TrackCommentResponse>? = null
+    private var cachedFavTracks: List<SupabaseService.FavoriteTrackResponse>? = null
+    private var cachedFavArtists: List<SupabaseService.FavoriteArtistResponse>? = null
+
     override suspend fun login(email: String, password: String): Result<SupabaseTokenResponse> {
         return runCatching {
             val tokenResponse = supabase.signIn(email, password)
             sessionManager.saveAccessToken(tokenResponse.accessToken)
             sessionManager.saveEmail(email)
-            // Сохраняем user ID если он есть в ответе
-            tokenResponse.user?.id?.let { userId ->
-                sessionManager.saveUserId(userId)
-            }
+            tokenResponse.user?.id?.let { userId -> sessionManager.saveUserId(userId) }
+            // Инвалидируем кэш при смене аккаунта
+            invalidateCache()
             tokenResponse
         }
     }
@@ -81,8 +88,17 @@ class AuthRepositoryImpl @Inject constructor(
         return runCatching {
             val userId = sessionManager.getUserId()
             supabase.upsertProfile(accessToken = accessToken, userId = userId, username = username, email = email, bio = bio, favoriteGenre = favoriteGenre, avatarUrl = avatarUrl)
+            cachedProfile = null // инвалидируем кэш профиля после обновления
             Unit
         }
+    }
+
+    private fun invalidateCache() {
+        cachedProfile = null
+        cachedMyRatings = null
+        cachedMyComments = null
+        cachedFavTracks = null
+        cachedFavArtists = null
     }
     
     override fun getUserId(): String? {
@@ -100,14 +116,16 @@ class AuthRepositoryImpl @Inject constructor(
     }
     
     override suspend fun getProfile(accessToken: String): Result<SupabaseService.ProfileResponse?> {
+        cachedProfile?.let { return Result.success(it) }
         return runCatching {
-            supabase.getProfile(accessToken)
+            supabase.getProfile(accessToken).also { cachedProfile = it }
         }
     }
     
     override suspend fun getFavoriteTracks(accessToken: String, limit: Int, orderByPlayCount: Boolean): Result<List<SupabaseService.FavoriteTrackResponse>> {
+        cachedFavTracks?.let { return Result.success(it) }
         return runCatching {
-            supabase.getFavoriteTracks(accessToken, limit, orderByPlayCount)
+            supabase.getFavoriteTracks(accessToken, limit, orderByPlayCount).also { cachedFavTracks = it }
         }
     }
     
@@ -120,8 +138,9 @@ class AuthRepositoryImpl @Inject constructor(
     }
     
     override suspend fun getFavoriteArtists(accessToken: String, limit: Int): Result<List<SupabaseService.FavoriteArtistResponse>> {
+        cachedFavArtists?.let { return Result.success(it) }
         return runCatching {
-            supabase.getFavoriteArtists(accessToken, limit)
+            supabase.getFavoriteArtists(accessToken, limit).also { cachedFavArtists = it }
         }
     }
     
@@ -150,7 +169,8 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getMyRatings(accessToken: String, limit: Int): List<SupabaseService.TrackRatingResponse> {
-        return supabase.getMyRatings(accessToken, limit)
+        cachedMyRatings?.let { return it }
+        return supabase.getMyRatings(accessToken, limit).also { cachedMyRatings = it }
     }
 
     override suspend fun getTrackAverageRating(accessToken: String, audiusTrackId: String): SupabaseService.TrackAverageRating? {
@@ -166,7 +186,8 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getMyComments(accessToken: String, limit: Int): List<SupabaseService.TrackCommentResponse> {
-        return supabase.getMyComments(accessToken, limit)
+        cachedMyComments?.let { return it }
+        return supabase.getMyComments(accessToken, limit).also { cachedMyComments = it }
     }
 
     override suspend fun deleteTrackComment(accessToken: String, commentId: String): Result<Unit> {

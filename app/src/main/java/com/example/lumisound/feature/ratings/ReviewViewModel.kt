@@ -25,8 +25,9 @@ data class ReviewUiState(
     val review: String = "",
     val commentText: String = "",
     val comments: List<SupabaseService.TrackCommentResponse> = emptyList(),
-    val reviews: List<SupabaseService.TrackRatingResponse> = emptyList(), // рецензии с репутацией
-    val myVotes: Map<String, Int> = emptyMap(), // ratingId -> vote
+    val reviews: List<SupabaseService.TrackRatingResponse> = emptyList(),
+    val myVotes: Map<String, Int> = emptyMap(), // ratingId -> vote (+1 или -1)
+    val votingIds: Set<String> = emptySet(),    // ratingId-ы, по которым идёт запрос
     val existingRating: SupabaseService.TrackRatingResponse? = null,
     val averageRating: SupabaseService.TrackAverageRating? = null,
     val userAvatarUrl: String? = null,
@@ -184,26 +185,46 @@ class ReviewViewModel @Inject constructor(
 
     fun voteReview(audiusTrackId: String, ratingId: String, vote: Int) {
         val token = sessionManager.getAccessToken() ?: return
+
+        val currentVote = _state.value.myVotes[ratingId]
+
+        // Повторное нажатие на ту же стрелку — ничего не делаем
+        if (currentVote == vote) return
+
+        // Блокируем повторные нажатия пока идёт запрос
+        if (_state.value.votingIds.contains(ratingId)) return
+
+        val delta = vote - (currentVote ?: 0)
+
+        // 1. Оптимистичное обновление UI — мгновенно
+        val optimisticVotes = _state.value.myVotes.toMutableMap()
+        optimisticVotes[ratingId] = vote
+        val optimisticReviews = _state.value.reviews.map { r ->
+            if (r.id == ratingId) r.copy(reputation = r.reputation + delta) else r
+        }.sortedByDescending { it.reputation }
+
+        _state.value = _state.value.copy(
+            myVotes = optimisticVotes,
+            reviews = optimisticReviews,
+            votingIds = _state.value.votingIds + ratingId
+        )
+
+        // 2. Сетевой запрос
         viewModelScope.launch {
-            val currentVote = _state.value.myVotes[ratingId]
-            val isToggleOff = currentVote == vote
+            val result = authRepository.voteReview(token, ratingId, vote)
 
-            val result = if (isToggleOff) {
-                authRepository.deleteVoteReview(token, ratingId)
-            } else {
-                authRepository.voteReview(token, ratingId, vote)
-            }
-
-            result.onSuccess {
-                val newVote = if (isToggleOff) null else vote
-                val newVotes = _state.value.myVotes.toMutableMap()
-                if (newVote == null) newVotes.remove(ratingId) else newVotes[ratingId] = newVote
-                val delta = (newVote ?: 0) - (currentVote ?: 0)
-                val reviews = _state.value.reviews.map { r ->
-                    if (r.id == ratingId) r.copy(reputation = r.reputation + delta) else r
+            result.onFailure {
+                // Откат при ошибке
+                val rollbackVotes = _state.value.myVotes.toMutableMap()
+                if (currentVote == null) rollbackVotes.remove(ratingId) else rollbackVotes[ratingId] = currentVote
+                val rollbackReviews = _state.value.reviews.map { r ->
+                    if (r.id == ratingId) r.copy(reputation = r.reputation - delta) else r
                 }.sortedByDescending { it.reputation }
-                _state.value = _state.value.copy(myVotes = newVotes, reviews = reviews)
+                _state.value = _state.value.copy(myVotes = rollbackVotes, reviews = rollbackReviews)
             }
+
+            // Снимаем блокировку
+            _state.value = _state.value.copy(votingIds = _state.value.votingIds - ratingId)
         }
     }
 
