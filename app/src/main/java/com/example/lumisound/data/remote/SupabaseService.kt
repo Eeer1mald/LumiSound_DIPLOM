@@ -6,6 +6,7 @@ import io.ktor.client.call.body
 import io.ktor.client.request.header
 import io.ktor.client.request.get
 import io.ktor.client.request.post
+import io.ktor.client.request.patch
 import io.ktor.client.request.delete
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
@@ -352,7 +353,61 @@ class SupabaseService @Inject constructor(
             null
         }
     }
-    
+
+    /** Получить профиль любого пользователя по его UUID */
+    suspend fun getProfileById(userId: String): ProfileResponse? {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/profiles")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                parameter("id", "eq.$userId")
+                parameter("select", "id,username,email,bio,favorite_genre,avatar_url,created_at,updated_at")
+                parameter("limit", "1")
+            }
+            if (response.status.isSuccess()) {
+                json.decodeFromString<List<ProfileResponse>>(response.bodyAsText()).firstOrNull()
+            } else null
+        } catch (e: Exception) {
+            Log.w("SupabaseService", "getProfileById error: ${e.message}")
+            null
+        }
+    }
+
+    /** Батч-загрузка профилей по списку UUID — один запрос вместо N */
+    suspend fun getProfilesByIds(userIds: List<String>): Map<String, ProfileResponse> {
+        if (userIds.isEmpty()) return emptyMap()
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val ids = userIds.distinct().joinToString(",")
+            val response = http.get {
+                url("$baseUrl/rest/v1/profiles")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                parameter("id", "in.($ids)")
+                parameter("select", "id,username,avatar_url")
+            }
+            if (response.status.isSuccess()) {
+                @Serializable data class MinProfile(
+                    val id: String,
+                    val username: String,
+                    @SerialName("avatar_url") val avatarUrl: String? = null
+                )
+                val profiles = json.decodeFromString<List<MinProfile>>(response.bodyAsText())
+                profiles.associate { p ->
+                    p.id to ProfileResponse(
+                        id = p.id, username = p.username, email = "",
+                        avatarUrl = p.avatarUrl
+                    )
+                }
+            } else emptyMap()
+        } catch (e: Exception) {
+            Log.w("SupabaseService", "getProfilesByIds error: ${e.message}")
+            emptyMap()
+        }
+    }
+
     // ========== FAVORITE TRACKS ==========
     @Serializable
     data class FavoriteTrackResponse(
@@ -722,6 +777,8 @@ class SupabaseService @Inject constructor(
                 rating.charismaScore?.let { append("\"charisma_score\":$it,") }
                 rating.atmosphereScore?.let { append("\"atmosphere_score\":$it,") }
                 rating.review?.let { append("\"review\":\"${it.replace("\"", "\\\"")}\",") }
+                rating.username?.let { append("\"username\":\"${it.replace("\"", "\\\"")}\",") }
+                rating.userAvatarUrl?.let { append("\"user_avatar_url\":\"${it.replace("\"", "\\\"")}\",") }
                 append("\"updated_at\":\"${java.time.Instant.now()}\"")
                 append("}")
             }
@@ -1107,5 +1164,487 @@ class SupabaseService @Inject constructor(
                 json.decodeFromString<List<VoteRow>>(response.bodyAsText()).firstOrNull()?.vote
             } else null
         } catch (e: Exception) { null }
+    }
+
+    // ========== PLAYLISTS ==========
+
+    @Serializable
+    data class PlaylistInsert(
+        val name: String,
+        val description: String? = null,
+        @SerialName("cover_url") val coverUrl: String? = null
+    )
+
+    @Serializable
+    data class PlaylistResponse(
+        val id: String,
+        @SerialName("user_id") val userId: String,
+        val name: String,
+        val description: String? = null,
+        @SerialName("cover_url") val coverUrl: String? = null,
+        @SerialName("created_at") val createdAt: String? = null,
+        @SerialName("track_count") val trackCount: Int = 0,
+        @SerialName("is_public") val isPublic: Boolean = false,
+        @SerialName("likes_count") val likesCount: Int = 0,
+        val username: String? = null,
+        @SerialName("user_avatar_url") val userAvatarUrl: String? = null
+    )
+
+    @Serializable
+    data class PlaylistTrackInsert(
+        @SerialName("playlist_id") val playlistId: String,
+        @SerialName("track_id") val trackId: String,
+        @SerialName("track_title") val trackTitle: String,
+        @SerialName("track_artist") val trackArtist: String,
+        @SerialName("track_cover_url") val trackCoverUrl: String? = null,
+        @SerialName("track_preview_url") val trackPreviewUrl: String? = null,
+        val position: Int = 0,
+        @SerialName("added_by_username") val addedByUsername: String? = null,
+        @SerialName("added_by_avatar") val addedByAvatar: String? = null
+    )
+
+    @Serializable
+    data class PlaylistTrackResponse(
+        val id: String,
+        @SerialName("playlist_id") val playlistId: String,
+        @SerialName("track_id") val trackId: String,
+        @SerialName("track_title") val trackTitle: String,
+        @SerialName("track_artist") val trackArtist: String,
+        @SerialName("track_cover_url") val trackCoverUrl: String? = null,
+        @SerialName("track_preview_url") val trackPreviewUrl: String? = null,
+        val position: Int = 0,
+        @SerialName("added_at") val addedAt: String? = null,
+        @SerialName("added_by_username") val addedByUsername: String? = null,
+        @SerialName("added_by_avatar") val addedByAvatar: String? = null
+    )
+
+    suspend fun createPlaylist(accessToken: String, name: String, description: String? = null, isPublic: Boolean = false): Result<PlaylistResponse> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            val profile = getProfile(accessToken)
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val body = buildString {
+                append("{")
+                append("\"user_id\":\"$userId\",")
+                append("\"name\":\"${name.replace("\"", "\\\"")}\",")
+                description?.let { append("\"description\":\"${it.replace("\"", "\\\"")}\",") }
+                profile?.username?.let { append("\"username\":\"${it.replace("\"", "\\\"")}\",") }
+                profile?.avatarUrl?.let { append("\"user_avatar_url\":\"${it.replace("\"", "\\\"")}\",") }
+                append("\"is_public\":$isPublic,")
+                append("\"track_count\":0,")
+                append("\"likes_count\":0")
+                append("}")
+            }
+            val response = http.post {
+                url("$baseUrl/rest/v1/playlists")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                header("Prefer", "return=representation")
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка создания плейлиста: ${response.status}")
+            json.decodeFromString<List<PlaylistResponse>>(response.bodyAsText()).first()
+        }
+    }
+
+    suspend fun updatePlaylistTrackCount(accessToken: String, playlistId: String, count: Int): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            http.patch {
+                url("$baseUrl/rest/v1/playlists?id=eq.$playlistId&user_id=eq.$userId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody("{\"track_count\":$count}")
+            }
+        }
+    }
+
+    suspend fun updatePlaylistVisibility(accessToken: String, playlistId: String, isPublic: Boolean): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            val response = http.patch {
+                url("$baseUrl/rest/v1/playlists?id=eq.$playlistId&user_id=eq.$userId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody("{\"is_public\":$isPublic}")
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка обновления: ${response.status}")
+        }
+    }
+
+    suspend fun uploadPlaylistCover(accessToken: String, playlistId: String, fileBytes: ByteArray): Result<String> {
+        return runCatching {
+            val fileName = "playlist_${playlistId}_${System.currentTimeMillis()}.jpg"
+            // Пробуем playlist-covers, fallback на avatars
+            val buckets = listOf("playlist-covers", "avatars")
+            var lastError: Exception? = null
+            for (bucket in buckets) {
+                try {
+                    val response = http.post {
+                        url("$baseUrl/storage/v1/object/$bucket/$fileName")
+                        header("apikey", anonKey)
+                        header(HttpHeaders.Authorization, "Bearer $accessToken")
+                        header("x-upsert", "true")
+                        header("Content-Type", "image/jpeg")
+                        setBody(fileBytes)
+                    }
+                    if (response.status.isSuccess()) {
+                        return@runCatching "$baseUrl/storage/v1/object/public/$bucket/$fileName"
+                    }
+                    lastError = IllegalStateException("Bucket $bucket: ${response.status}")
+                } catch (e: Exception) {
+                    lastError = e
+                }
+            }
+            throw lastError ?: IllegalStateException("Не удалось загрузить обложку")
+        }
+    }
+
+    suspend fun updatePlaylistCover(accessToken: String, playlistId: String, coverUrl: String): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            val response = http.patch {
+                url("$baseUrl/rest/v1/playlists?id=eq.$playlistId&user_id=eq.$userId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody("{\"cover_url\":\"${coverUrl.replace("\"", "\\\"")}\"}")
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка обновления обложки: ${response.status}")
+        }
+    }
+
+    suspend fun updatePlaylistName(accessToken: String, playlistId: String, name: String, description: String?): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            val body = buildString {
+                append("{\"name\":\"${name.replace("\"", "\\\"")}\",")
+                if (description != null) append("\"description\":\"${description.replace("\"", "\\\"")}\"")
+                else append("\"description\":null")
+                append("}")
+            }
+            val response = http.patch {
+                url("$baseUrl/rest/v1/playlists?id=eq.$playlistId&user_id=eq.$userId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка обновления: ${response.status}")
+        }
+    }
+
+    suspend fun getPublicPlaylists(accessToken: String, limit: Int = 20): List<PlaylistResponse> {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/playlists")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("is_public", "eq.true")
+                parameter("order", "likes_count.desc,created_at.desc")
+                parameter("limit", limit.toString())
+            }
+            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun likePlaylist(accessToken: String, playlistId: String): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            // Insert like — ON CONFLICT DO NOTHING через resolution=ignore-duplicates
+            val likeResponse = http.post {
+                url("$baseUrl/rest/v1/playlist_likes")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                header("Prefer", "resolution=ignore-duplicates,return=minimal")
+                contentType(ContentType.Application.Json)
+                setBody("{\"user_id\":\"$userId\",\"playlist_id\":\"$playlistId\"}")
+            }
+            // Обновляем счётчик только если лайк был реально добавлен (201 Created)
+            if (likeResponse.status.value == 201) {
+                http.patch {
+                    url("$baseUrl/rest/v1/playlists?id=eq.$playlistId")
+                    header("apikey", anonKey)
+                    header(HttpHeaders.Authorization, "Bearer $accessToken")
+                    contentType(ContentType.Application.Json)
+                    setBody("{\"likes_count\":\"likes_count + 1\"}")
+                }
+                // Fallback через RPC если PATCH не поддерживает выражения
+                runCatching {
+                    http.post {
+                        url("$baseUrl/rest/v1/rpc/increment_playlist_likes")
+                        header("apikey", anonKey)
+                        header(HttpHeaders.Authorization, "Bearer $accessToken")
+                        contentType(ContentType.Application.Json)
+                        setBody("{\"p_playlist_id\":\"$playlistId\"}")
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun unlikePlaylist(accessToken: String, playlistId: String): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            val deleteResponse = http.delete {
+                url("$baseUrl/rest/v1/playlist_likes?user_id=eq.$userId&playlist_id=eq.$playlistId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+            }
+            if (deleteResponse.status.isSuccess()) {
+                runCatching {
+                    http.post {
+                        url("$baseUrl/rest/v1/rpc/decrement_playlist_likes")
+                        header("apikey", anonKey)
+                        header(HttpHeaders.Authorization, "Bearer $accessToken")
+                        contentType(ContentType.Application.Json)
+                        setBody("{\"p_playlist_id\":\"$playlistId\"}")
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun getMyLikedPlaylistIds(accessToken: String): Set<String> {
+        return try {
+            val userId = getUser(accessToken)?.id ?: return emptySet()
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            @Serializable data class LikeRow(@SerialName("playlist_id") val playlistId: String)
+            val response = http.get {
+                url("$baseUrl/rest/v1/playlist_likes")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("user_id", "eq.$userId")
+                parameter("select", "playlist_id")
+            }
+            if (response.status.isSuccess()) {
+                json.decodeFromString<List<LikeRow>>(response.bodyAsText()).map { it.playlistId }.toSet()
+            } else emptySet()
+        } catch (e: Exception) {
+            android.util.Log.e("SupabaseService", "getMyLikedPlaylistIds error: ${e.message}")
+            emptySet()
+        }
+    }
+
+    suspend fun isPlaylistLiked(accessToken: String, playlistId: String): Boolean {
+        return try {
+            val userId = getUser(accessToken)?.id ?: return false
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            @Serializable data class LikeRow(val id: String)
+            val response = http.get {
+                url("$baseUrl/rest/v1/playlist_likes")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("user_id", "eq.$userId")
+                parameter("playlist_id", "eq.$playlistId")
+                parameter("select", "id")
+                parameter("limit", "1")
+            }
+            if (response.status.isSuccess()) {
+                val text = response.bodyAsText()
+                text.contains("\"id\"") // Проверяем что есть хотя бы одна запись
+            } else false
+        } catch (e: Exception) { false }
+    }
+
+    // Рекомендованные плейлисты — публичные от пользователей с похожим вкусом
+    // (те, кто слушает тех же артистов)
+    suspend fun getRecommendedPlaylists(accessToken: String, favoriteArtistNames: List<String>, limit: Int = 20): List<PlaylistResponse> {
+        return try {
+            // Берём просто публичные плейлисты, исключая свои
+            val userId = getUser(accessToken)?.id ?: return emptyList()
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/playlists")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("is_public", "eq.true")
+                parameter("user_id", "neq.$userId")
+                parameter("order", "likes_count.desc,created_at.desc")
+                parameter("limit", limit.toString())
+            }
+            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getMyPlaylists(accessToken: String): List<PlaylistResponse> {
+        return try {
+            val userId = getUser(accessToken)?.id ?: return emptyList()
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/playlists")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("user_id", "eq.$userId")
+                parameter("order", "created_at.desc")
+            }
+            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun deletePlaylist(accessToken: String, playlistId: String): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            val response = http.delete {
+                url("$baseUrl/rest/v1/playlists?id=eq.$playlistId&user_id=eq.$userId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка удаления: ${response.status}")
+        }
+    }
+
+    suspend fun addTrackToPlaylist(accessToken: String, track: PlaylistTrackInsert): Result<Unit> {
+        return runCatching {
+            val response = http.post {
+                url("$baseUrl/rest/v1/playlist_tracks")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                header("Prefer", "resolution=ignore-duplicates")
+                contentType(ContentType.Application.Json)
+                setBody(listOf(track))
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка добавления трека: ${response.status}")
+        }
+    }
+
+    suspend fun getPlaylistTracks(accessToken: String, playlistId: String): List<PlaylistTrackResponse> {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/playlist_tracks")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("playlist_id", "eq.$playlistId")
+                parameter("order", "position.asc,added_at.asc")
+            }
+            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun removeTrackFromPlaylist(accessToken: String, playlistId: String, trackId: String): Result<Unit> {
+        return runCatching {
+            val response = http.delete {
+                url("$baseUrl/rest/v1/playlist_tracks?playlist_id=eq.$playlistId&track_id=eq.$trackId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка удаления трека: ${response.status}")
+        }
+    }
+
+    // ========== SYNTHESIS ==========
+
+    @Serializable
+    data class SynthesisSession(
+        val id: String,
+        @SerialName("creator_id") val creatorId: String,
+        @SerialName("creator_username") val creatorUsername: String? = null,
+        @SerialName("invite_code") val inviteCode: String,
+        val name: String = "Синтез",
+        val status: String = "pending",
+        @SerialName("created_at") val createdAt: String? = null
+    )
+
+    @Serializable
+    data class SynthesisParticipant(
+        val id: String,
+        @SerialName("session_id") val sessionId: String,
+        @SerialName("user_id") val userId: String,
+        val username: String? = null,
+        @SerialName("avatar_url") val avatarUrl: String? = null,
+        @SerialName("joined_at") val joinedAt: String? = null
+    )
+
+    suspend fun createSynthesisSession(accessToken: String, creatorUsername: String?): Result<SynthesisSession> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val body = buildString {
+                append("{\"creator_id\":\"$userId\"")
+                creatorUsername?.let { append(",\"creator_username\":\"${it.replace("\"", "\\\"")}\"") }
+                append("}")
+            }
+            val response = http.post {
+                url("$baseUrl/rest/v1/synthesis_sessions")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                header("Prefer", "return=representation")
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка создания синтеза: ${response.status}\n${response.bodyAsText()}")
+            json.decodeFromString<List<SynthesisSession>>(response.bodyAsText()).first()
+        }
+    }
+
+    suspend fun getSynthesisSession(accessToken: String, inviteCode: String): Result<SynthesisSession> {
+        return runCatching {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/synthesis_sessions")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("invite_code", "eq.$inviteCode")
+                parameter("limit", "1")
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Сессия не найдена")
+            json.decodeFromString<List<SynthesisSession>>(response.bodyAsText()).firstOrNull()
+                ?: throw IllegalStateException("Сессия не найдена")
+        }
+    }
+
+    suspend fun getMySynthesisSessions(accessToken: String): List<SynthesisSession> {
+        return try {
+            val userId = getUser(accessToken)?.id ?: return emptyList()
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/synthesis_sessions")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("creator_id", "eq.$userId")
+                parameter("order", "created_at.desc")
+            }
+            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun joinSynthesisSession(accessToken: String, sessionId: String, username: String?, avatarUrl: String?): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            val body = buildString {
+                append("{\"session_id\":\"$sessionId\",\"user_id\":\"$userId\"")
+                username?.let { append(",\"username\":\"${it.replace("\"", "\\\"")}\"") }
+                avatarUrl?.let { append(",\"avatar_url\":\"${it.replace("\"", "\\\"")}\"") }
+                append("}")
+            }
+            val response = http.post {
+                url("$baseUrl/rest/v1/synthesis_participants")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                header("Prefer", "resolution=ignore-duplicates")
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка присоединения: ${response.status}")
+        }
+    }
+
+    suspend fun getSynthesisParticipants(accessToken: String, sessionId: String): List<SynthesisParticipant> {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/synthesis_participants")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("session_id", "eq.$sessionId")
+                parameter("order", "joined_at.asc")
+            }
+            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
+        } catch (e: Exception) { emptyList() }
     }
 }

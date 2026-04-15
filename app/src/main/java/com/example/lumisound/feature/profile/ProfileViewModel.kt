@@ -29,6 +29,7 @@ data class ProfileUiState(
     val favoriteArtists: List<FavoriteArtist> = emptyList(),
     val commentsCount: Int = 0,
     val reviewsCount: Int = 0,
+    val ratingsCount: Int = 0,
     val isLoading: Boolean = false,
     val error: String? = null
 )
@@ -181,10 +182,11 @@ class ProfileViewModel @Inject constructor(
         val token = sessionManager.getAccessToken() ?: return
         viewModelScope.launch {
             val comments = authRepository.getMyComments(token, limit = 200)
-            val reviews = authRepository.getMyRatings(token, limit = 200)
+            val ratings = authRepository.getMyRatings(token, limit = 200)
             _uiState.value = _uiState.value.copy(
                 commentsCount = comments.size,
-                reviewsCount = reviews.count { !it.review.isNullOrBlank() }
+                reviewsCount = ratings.count { !it.review.isNullOrBlank() },
+                ratingsCount = ratings.size
             )
         }
     }

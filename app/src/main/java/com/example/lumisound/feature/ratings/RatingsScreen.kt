@@ -92,33 +92,27 @@ fun RatingsScreen(
             .background(ColorBackground)
             .statusBarsPadding()
     ) {
+        val gradientBrush = remember {
+            androidx.compose.ui.graphics.Brush.linearGradient(
+                listOf(GradientStart.copy(alpha = 0.9f), GradientEnd.copy(alpha = 0.7f), Color(0xFF1A0A2E))
+            )
+        }
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 120.dp)
         ) {
             // ── Средняя оценка — красивый блок сверху ──────────────────
-            item {
+            item(key = "header") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 20.dp)
                 ) {
-                    // Фоновый градиентный блок
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(130.dp)
-                            .shadow(16.dp, RoundedCornerShape(24.dp), spotColor = GradientStart.copy(alpha = 0.4f))
-                            .background(
-                                brush = Brush.linearGradient(
-                                    listOf(
-                                        GradientStart.copy(alpha = 0.9f),
-                                        GradientEnd.copy(alpha = 0.7f),
-                                        Color(0xFF1A0A2E)
-                                    )
-                                ),
-                                shape = RoundedCornerShape(24.dp)
-                            )
+                            .background(brush = gradientBrush, shape = RoundedCornerShape(24.dp))
                     )
                     // Контент поверх
                     Row(
@@ -189,7 +183,7 @@ fun RatingsScreen(
             }
 
             // ── Табы ───────────────────────────────────────────────────
-            item {
+            item(key = "tabs") {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -259,6 +253,7 @@ private fun ReviewCard(
     navController: NavHostController? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val scoreBrush = remember { androidx.compose.ui.graphics.Brush.linearGradient(listOf(GradientStart, GradientEnd)) }
     val dateStr = remember(rating.createdAt) {
         try {
             val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
@@ -334,7 +329,7 @@ private fun ReviewCard(
                 rating.overallScore?.let { score ->
                     Row(
                         modifier = Modifier
-                            .background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(8.dp))
+                            .background(brush = scoreBrush, shape = RoundedCornerShape(8.dp))
                             .padding(horizontal = 10.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)

@@ -49,8 +49,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
-import coil.compose.SubcomposeAsyncImage
-import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
 import com.example.lumisound.data.model.Track
 import com.example.lumisound.feature.nowplaying.PlayerViewModel
@@ -83,8 +81,8 @@ fun ArtistCardScreen(
 ) {
     val state by viewModel.state.collectAsState()
 
-    LaunchedEffect(artistId) {
-        if (!artistId.isNullOrBlank()) {
+    LaunchedEffect(artistId, artistName) {
+        if (!artistId.isNullOrBlank() || artistName.isNotBlank()) {
             viewModel.load(artistId, artistName, artistImageUrl)
         }
     }
@@ -234,25 +232,15 @@ fun ArtistCardScreen(
                             .background(ColorSurface)
                     ) {
                         if (!avatarUrl.isNullOrEmpty()) {
-                            SubcomposeAsyncImage(
+                            AsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
                                     .data(avatarUrl)
                                     .crossfade(false)
+                                    .memoryCacheKey(avatarUrl)
                                     .build(),
                                 contentDescription = artistName,
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop,
-                                loading = {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(40.dp))
-                                    }
-                                },
-                                error = {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(40.dp))
-                                    }
-                                },
-                                success = { SubcomposeAsyncImageContent() }
+                                contentScale = ContentScale.Crop
                             )
                         } else {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -434,30 +422,18 @@ private fun ArtistTrackItem(
                 .background(ColorSurface)
         ) {
             if (!track.imageUrl.isNullOrEmpty()) {
-                SubcomposeAsyncImage(
+                AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(track.imageUrl)
                         .crossfade(false)
+                        .memoryCacheKey(track.imageUrl)
                         .build(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    loading = {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(20.dp))
-                        }
-                    },
-                    error = {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(20.dp))
-                        }
-                    },
-                    success = { SubcomposeAsyncImageContent() }
+                    contentScale = ContentScale.Crop
                 )
             } else {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(20.dp))
-                }
+                Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(20.dp).align(Alignment.Center))
             }
         }
 

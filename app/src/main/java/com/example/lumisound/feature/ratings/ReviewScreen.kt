@@ -351,10 +351,13 @@ fun ReviewScreen(
                             currentUserId = state.currentUserId,
                             onDelete = { viewModel.deleteComment(comment.id) },
                             onAvatarClick = {
-                                navController?.navigate(
-                                    com.example.lumisound.navigation.MainDestination.PublicProfile()
-                                        .createRoute(comment.userId, comment.username ?: "Пользователь", comment.userAvatarUrl)
-                                )
+                                // Не переходим на свой профиль
+                                if (comment.userId != state.currentUserId && comment.userId.isNotBlank()) {
+                                    navController?.navigate(
+                                        com.example.lumisound.navigation.MainDestination.PublicProfile()
+                                            .createRoute(comment.userId, comment.username ?: "Пользователь", comment.userAvatarUrl)
+                                    )
+                                }
                             }
                         )
                         Box(modifier = Modifier.fillMaxWidth().height(1.dp).padding(start = 52.dp).background(Color.White.copy(alpha = 0.04f)))
@@ -725,10 +728,10 @@ private fun CommentRow(
     var showDeleteDialog by remember { mutableStateOf(false) }
     val isOwner = currentUserId != null && comment.userId == currentUserId
 
-    // Имя: если это наш комментарий — берём из avatarUrl/username, иначе из comment
+    // Имя всегда из comment — оно сохраняется при отправке
     val displayName = comment.username?.takeIf { it.isNotBlank() } ?: "Пользователь"
-    // Аватар: для своих — из state, для чужих — из comment
-    val displayAvatar = if (isOwner) avatarUrl else comment.userAvatarUrl
+    // Аватар всегда из comment — он сохраняется при отправке
+    val displayAvatar = comment.userAvatarUrl?.takeIf { it.isNotBlank() } ?: avatarUrl
 
     if (showDeleteDialog) {
         AlertDialog(

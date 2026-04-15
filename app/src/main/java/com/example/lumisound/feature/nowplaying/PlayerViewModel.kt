@@ -35,6 +35,9 @@ class PlayerViewModel @Inject constructor(
     
     private val _duration = MutableStateFlow(0L)
     val duration: StateFlow<Long> = _duration.asStateFlow()
+
+    private val _avgScore = MutableStateFlow<Float?>(null)
+    val avgScore: StateFlow<Float?> = _avgScore.asStateFlow()
     
     private var positionUpdateJob: Job? = null
     private var trackPlayTrackingJob: Job? = null
@@ -42,6 +45,18 @@ class PlayerViewModel @Inject constructor(
     private var hasTrackedCurrentTrack = false
     
     init {
+        // Синхронизируем _currentTrack с playerStateHolder — чтобы трек установленный
+        // из AppPreloadViewModel сразу отображался в мини-плеере
+        viewModelScope.launch {
+            playerStateHolder.currentTrack.collect { track ->
+                if (track != null && _currentTrack.value?.id != track.id) {
+                    _currentTrack.value = track
+                    // Загружаем среднюю оценку для нового трека
+                    loadAvgScore(track.id)
+                }
+            }
+        }
+
         val player = audioPlayerService.getPlayer()
         player?.addListener(object : androidx.media3.common.Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -56,7 +71,8 @@ class PlayerViewModel @Inject constructor(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
                     androidx.media3.common.Player.STATE_READY -> {
-                        _duration.value = audioPlayerService.getDuration()
+                        val dur = audioPlayerService.getDuration()
+                        if (dur > 0) _duration.value = dur
                     }
                     androidx.media3.common.Player.STATE_ENDED -> {
                         _isPlaying.value = false
@@ -75,13 +91,15 @@ class PlayerViewModel @Inject constructor(
     }
     
     fun playTrack(track: Track) {
-        // Сбрасываем отслеживание для нового трека
         hasTrackedCurrentTrack = false
         lastTrackedTrackId = null
         stopTrackPlayTracking()
         
         _currentTrack.value = track
+        _currentPosition.value = 0L
+        _duration.value = 0L
         playerStateHolder.setCurrentTrack(track)
+        loadAvgScore(track.id)
         track.previewUrl?.let { url ->
             audioPlayerService.play(url)
             _isPlaying.value = true
@@ -110,7 +128,7 @@ class PlayerViewModel @Inject constructor(
         if (_isPlaying.value) {
             audioPlayerService.pause()
             _isPlaying.value = false
-            stopPositionUpdates()
+            // НЕ останавливаем positionUpdateJob — пусть продолжает читать позицию
         } else {
             audioPlayerService.resume()
             _isPlaying.value = true
@@ -133,30 +151,41 @@ class PlayerViewModel @Inject constructor(
         stopPositionUpdates()
         _currentPosition.value = 0L
     }
-    
+
+    private fun loadAvgScore(trackId: String) {
+        val token = sessionManager.getAccessToken() ?: run { _avgScore.value = null; return }
+        viewModelScope.launch {
+            val avg = authRepository.getTrackAverageRating(token, trackId)
+            _avgScore.value = avg?.avgOverall?.toFloat()
+        }
+    }
+
     // Синхронизирует состояние ViewModel с реальным состоянием плеера
-    // Используется при открытии NowPlayingScreen, чтобы отобразить актуальное состояние
     fun syncPlayerState() {
         val player = audioPlayerService.getPlayer()
         if (player != null) {
             _isPlaying.value = player.isPlaying
             _currentPosition.value = audioPlayerService.getCurrentPosition()
-            _duration.value = audioPlayerService.getDuration()
-            
-            // Если плеер играет, но обновления позиции не запущены, запускаем их
-            if (player.isPlaying && positionUpdateJob == null) {
-                startPositionUpdates()
-            }
+            val dur = audioPlayerService.getDuration()
+            if (dur > 0) _duration.value = dur
+            startPositionUpdates()
         }
     }
     
     private fun startPositionUpdates() {
         stopPositionUpdates()
         positionUpdateJob = viewModelScope.launch {
-            while (_isPlaying.value) {
-                _currentPosition.value = audioPlayerService.getCurrentPosition()
-                _duration.value = audioPlayerService.getDuration()
-                delay(250) // 4 раза в секунду — достаточно для UI, не нагружает рекомпозиции
+            while (true) {
+                val player = audioPlayerService.getPlayer()
+                if (player != null) {
+                    _currentPosition.value = audioPlayerService.getCurrentPosition()
+                    val dur = audioPlayerService.getDuration()
+                    // ExoPlayer возвращает Long.MAX_VALUE пока трек не загружен — фильтруем
+                    if (dur > 0 && dur != Long.MAX_VALUE) {
+                        _duration.value = dur
+                    }
+                }
+                delay(250)
             }
         }
     }

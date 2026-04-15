@@ -7,6 +7,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import com.example.lumisound.data.remote.AudiusArtistFull
 import com.example.lumisound.data.model.Track
 import com.example.lumisound.data.repository.MusicRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -35,6 +36,9 @@ class SearchViewModel @Inject constructor(
     private val _searchResults = MutableStateFlow<List<Track>>(emptyList())
     val searchResults: StateFlow<List<Track>> = _searchResults.asStateFlow()
 
+    private val _artistResults = MutableStateFlow<List<AudiusArtistFull>>(emptyList())
+    val artistResults: StateFlow<List<AudiusArtistFull>> = _artistResults.asStateFlow()
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
@@ -56,6 +60,13 @@ class SearchViewModel @Inject constructor(
     private val _isFeedPlaying = MutableStateFlow(false)
     val isFeedPlaying: StateFlow<Boolean> = _isFeedPlaying.asStateFlow()
 
+    // Пагинация
+    private var discoverPage = 0
+    private var followingPage = 0
+    private val pageSize = 20
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
+
     // Кэш предзагруженных MediaSource по URL
     private val preloadedSources = mutableMapOf<String, ProgressiveMediaSource>()
     private var currentTrackUrl: String? = null
@@ -70,15 +81,51 @@ class SearchViewModel @Inject constructor(
     }
 
     fun loadFeeds() {
+        // Сбрасываем пагинацию и кэш репозитория
+        discoverPage = 0
+        followingPage = 0
+        musicRepository.invalidateFeeds()
+
         viewModelScope.launch {
             _feedLoading.value = true
-            val discover = musicRepository.getDiscoverFeed(30)
-            val following = musicRepository.getFollowingFeed(30)
+            val discover = musicRepository.getDiscoverFeed(page = 0, pageSize = pageSize)
+            val following = musicRepository.getFollowingFeed(page = 0, pageSize = pageSize)
             _discoverFeed.value = discover.getOrDefault(emptyList())
             _followingFeed.value = following.getOrDefault(emptyList())
             _feedLoading.value = false
             // Предзагружаем первые 3 трека
             preloadTracks(_discoverFeed.value.take(3))
+        }
+    }
+
+    // Подгрузка следующей страницы для "Рекомендации"
+    fun loadMoreDiscover() {
+        if (_isLoadingMore.value) return
+        viewModelScope.launch {
+            _isLoadingMore.value = true
+            discoverPage++
+            val more = musicRepository.getDiscoverFeed(page = discoverPage, pageSize = pageSize)
+            val newTracks = more.getOrDefault(emptyList())
+            if (newTracks.isNotEmpty()) {
+                _discoverFeed.value = _discoverFeed.value + newTracks
+                preloadTracks(newTracks.take(3))
+            }
+            _isLoadingMore.value = false
+        }
+    }
+
+    // Подгрузка следующей страницы для "Для вас"
+    fun loadMoreFollowing() {
+        if (_isLoadingMore.value) return
+        viewModelScope.launch {
+            _isLoadingMore.value = true
+            followingPage++
+            val more = musicRepository.getFollowingFeed(page = followingPage, pageSize = pageSize)
+            val newTracks = more.getOrDefault(emptyList())
+            if (newTracks.isNotEmpty()) {
+                _followingFeed.value = _followingFeed.value + newTracks
+            }
+            _isLoadingMore.value = false
         }
     }
 
@@ -138,7 +185,6 @@ class SearchViewModel @Inject constructor(
         val newMuted = !_isFeedMuted.value
         _isFeedMuted.value = newMuted
         feedPlayer.volume = if (newMuted) 0f else 1f
-        // Seek уже сделан при загрузке трека — никакой задержки
     }
 
     fun muteFeed() {
@@ -156,12 +202,26 @@ class SearchViewModel @Inject constructor(
     fun searchTracks(query: String) {
         if (query.isBlank()) {
             _searchResults.value = emptyList()
+            _artistResults.value = emptyList()
             _error.value = null
             return
         }
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
+            // Параллельный поиск треков и артистов
+            launch {
+                musicRepository.searchArtists(query, limit = 5)
+                    .onSuccess { artists ->
+                        val q = query.trim().lowercase()
+                        val match = artists.firstOrNull { artist ->
+                            val name = artist.name.lowercase()
+                            name == q || name.startsWith(q) || q.length >= 3 && name.contains(q)
+                        }
+                        _artistResults.value = if (match != null) listOf(match) else emptyList()
+                    }
+                    .onFailure { _artistResults.value = emptyList() }
+            }
             musicRepository.searchTracks(query, limit = 20)
                 .onSuccess { tracks ->
                     _searchResults.value = tracks

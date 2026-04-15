@@ -18,10 +18,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,6 +64,7 @@ fun MiniPlayer(
     onAddClick: () -> Unit = {},
     onLikeClick: () -> Unit = {},
     onArtistClick: ((artistId: String?, artistName: String, artistImageUrl: String?) -> Unit)? = null,
+    avgScore: Float? = null,
     isLiked: Boolean = false,
     animationProgress: Float = 0f,
     onAnimationProgressChange: (Float) -> Unit = {},
@@ -245,15 +246,38 @@ fun MiniPlayer(
                         }
                 )
                 
-                // Like button (orange heart when liked)
-                Icon(
-                    imageVector = Icons.Default.Favorite,
-                    contentDescription = if (isLiked) "Unlike" else "Like",
-                    tint = if (isLiked) Color(0xFFFF5C6C) else Color.White,
+                // Score badge — оценка или звёздочка
+                Box(
                     modifier = Modifier
-                        .size(24.dp)
-                        .clickable { onLikeClick() }
-                )
+                        .size(34.dp)
+                        .background(
+                            color = if (avgScore != null) GradientStart.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        .border(
+                            1.dp,
+                            if (avgScore != null) GradientStart.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.12f),
+                            RoundedCornerShape(10.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (avgScore != null) {
+                        Text(
+                            text = String.format("%.1f", avgScore),
+                            color = GradientStart,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = (-0.5).sp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = null,
+                            tint = ColorSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
         }
     }

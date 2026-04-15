@@ -61,8 +61,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import android.net.Uri
-import coil.compose.SubcomposeAsyncImage
-import coil.compose.SubcomposeAsyncImageContent
+import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.lumisound.feature.home.TrackPreview
 import com.example.lumisound.ui.theme.ColorAccentSecondary
@@ -177,48 +176,17 @@ fun ProfileScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(color = GradientStart) // Однотонный акцентный цвет
-                                .shadow(
-                                    elevation = 8.dp,
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                                .border(
-                                    width = 4.dp,
-                                    color = ColorBackground,
-                                    shape = RoundedCornerShape(16.dp)
-                                )
+                                .background(color = GradientStart)
+                                .border(width = 4.dp, color = ColorBackground, shape = RoundedCornerShape(16.dp))
                                 .clickable { imagePicker.launch("image/*") },
                             contentAlignment = Alignment.Center
                         ) {
                             if (avatarImageRequest != null) {
-                                SubcomposeAsyncImage(
+                                AsyncImage(
                                     model = avatarImageRequest,
                                     contentDescription = "Avatar",
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(16.dp)),
-                                    contentScale = ContentScale.Crop,
-                                    loading = {
-                                        // Показываем первую букву во время загрузки
-                                        Text(
-                                            text = username.take(1).uppercase(),
-                                            color = Color.White,
-                                            fontSize = 36.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    },
-                                    error = {
-                                        // Если изображение не загрузилось, показываем первую букву
-                                        Text(
-                                            text = username.take(1).uppercase(),
-                                            color = Color.White,
-                                            fontSize = 36.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    },
-                                    success = {
-                                        SubcomposeAsyncImageContent()
-                                    }
+                                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
+                                    contentScale = ContentScale.Crop
                                 )
                             } else {
                                 Text(
@@ -329,7 +297,7 @@ fun ProfileScreen(
                 }
             }
 
-            // Stats Grid — комментарии и рецензии
+            // Stats Grid — рецензии, оценки, комментарии
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -337,17 +305,24 @@ fun ProfileScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StatBox(
-                    icon = Icons.Default.MusicNote,
-                    value = uiState.commentsCount.toString(),
-                    label = "комментариев",
+                    icon = Icons.Default.Star,
+                    value = uiState.reviewsCount.toString(),
+                    label = "рецензий",
                     iconColor = GradientStart,
                     modifier = Modifier.weight(1f)
                 )
                 StatBox(
-                    icon = Icons.Default.Star,
-                    value = uiState.reviewsCount.toString(),
-                    label = "рецензий",
+                    icon = Icons.Default.Favorite,
+                    value = uiState.ratingsCount.toString(),
+                    label = "оценок",
                     iconColor = ColorAccentSecondary,
+                    modifier = Modifier.weight(1f)
+                )
+                StatBox(
+                    icon = Icons.Default.MusicNote,
+                    value = uiState.commentsCount.toString(),
+                    label = "комментариев",
+                    iconColor = GradientStart,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -616,43 +591,16 @@ private fun FavoriteTrackCard(
             contentAlignment = Alignment.Center
         ) {
             if (track.coverUrl != null) {
-                SubcomposeAsyncImage(
+                AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(track.coverUrl)
-                        .crossfade(false)
-                        .build(),
+                        .data(track.coverUrl).crossfade(false).memoryCacheKey(track.coverUrl).build(),
                     contentDescription = track.title,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(13.dp)),
-                    contentScale = ContentScale.Crop,
-                    loading = {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = null,
-                            tint = GradientStart.copy(alpha = 0.2f),
-                            modifier = Modifier.size(32.dp)
-                        )
-                    },
-                    error = {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = null,
-                            tint = GradientStart.copy(alpha = 0.4f),
-                            modifier = Modifier.size(48.dp)
-                        )
-                    },
-                    success = {
-                        SubcomposeAsyncImageContent()
-                    }
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(13.dp)),
+                    contentScale = ContentScale.Crop
                 )
             } else {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = null,
-                    tint = GradientStart.copy(alpha = 0.4f),
-                    modifier = Modifier.size(48.dp)
-                )
+                Icon(imageVector = Icons.Default.MusicNote, contentDescription = null,
+                    tint = GradientStart.copy(alpha = 0.4f), modifier = Modifier.size(48.dp))
             }
         }
         Text(
@@ -703,43 +651,16 @@ private fun FavoriteArtistCard(
             contentAlignment = Alignment.Center
         ) {
             if (artist.imageUrl != null) {
-                SubcomposeAsyncImage(
+                AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(artist.imageUrl)
-                        .crossfade(false)
-                        .build(),
+                        .data(artist.imageUrl).crossfade(false).memoryCacheKey(artist.imageUrl).build(),
                     contentDescription = artist.name,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape),
-                    contentScale = ContentScale.Crop,
-                    loading = {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = GradientStart.copy(alpha = 0.2f),
-                            modifier = Modifier.size(32.dp)
-                        )
-                    },
-                    error = {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = GradientStart.copy(alpha = 0.4f),
-                            modifier = Modifier.size(48.dp)
-                        )
-                    },
-                    success = {
-                        SubcomposeAsyncImageContent()
-                    }
+                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    contentScale = ContentScale.Crop
                 )
             } else {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = null,
-                    tint = GradientStart.copy(alpha = 0.4f),
-                    modifier = Modifier.size(48.dp)
-                )
+                Icon(imageVector = Icons.Default.Person, contentDescription = null,
+                    tint = GradientStart.copy(alpha = 0.4f), modifier = Modifier.size(48.dp))
             }
         }
         Text(

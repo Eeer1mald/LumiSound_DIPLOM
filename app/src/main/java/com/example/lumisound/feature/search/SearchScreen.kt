@@ -1,12 +1,15 @@
 package com.example.lumisound.feature.search
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -20,12 +23,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
@@ -36,9 +40,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,11 +64,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -96,9 +101,9 @@ fun SearchScreen(
     playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    // Отдельный флаг фокуса — не зависит от текста, не вызывает смену экрана при вводе
-    var isSearchFocused by remember { mutableStateOf(false) }
+    var isSearchFocused by rememberSaveable { mutableStateOf(false) }
     val searchResults by viewModel.searchResults.collectAsState()
+    val artistResults by viewModel.artistResults.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
     val discoverFeed by viewModel.discoverFeed.collectAsState()
@@ -161,10 +166,12 @@ fun SearchScreen(
                 if (searchQuery.isNotEmpty()) {
                     SearchResultsList(
                         results = searchResults,
+                        artistResults = artistResults,
                         isLoading = isLoading,
                         error = error,
                         playerStateHolder = playerStateHolder,
-                        playerViewModel = playerViewModel
+                        playerViewModel = playerViewModel,
+                        navController = navController
                     )
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -231,7 +238,7 @@ private fun FeedPager(
     onTapScreen: () -> Unit,
     onRefresh: () -> Unit
 ) {
-    val tabs = listOf("Для вас", "Любимое")
+    val tabs = listOf("Рекомендации", "Для вас")
     val pagerState = rememberPagerState(pageCount = { 2 })
     val scope = rememberCoroutineScope()
 
@@ -243,29 +250,13 @@ private fun FeedPager(
         } else {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 val feed = if (page == 0) discoverFeed else followingFeed
-                val emptyText = if (page == 0)
-                    "Добавьте треки и артистов в избранное\nдля персональных рекомендаций"
-                else "Добавьте артистов в избранное\nчтобы видеть их треки здесь"
 
                 if (feed.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize().background(ColorBackground), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("🎵", fontSize = 40.sp)
-                            Text(emptyText, color = ColorSecondary, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 32.dp))
-                            Box(
-                                modifier = Modifier.background(ColorSurface, RoundedCornerShape(12.dp))
-                                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onRefresh() }
-                                    .padding(horizontal = 20.dp, vertical = 10.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Icon(Icons.Default.Refresh, null, tint = GradientStart, modifier = Modifier.size(16.dp))
-                                    Text("Обновить", color = GradientStart, fontSize = 14.sp)
-                                }
-                            }
-                        }
+                        CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(36.dp))
                     }
                 } else {
-                    TikTokFeed(tracks = feed, viewModel = viewModel, navController = navController, isFeedMuted = isFeedMuted, onTapScreen = onTapScreen, hasMainTrack = hasMainTrack)
+                    TikTokFeed(tracks = feed, viewModel = viewModel, navController = navController, isFeedMuted = isFeedMuted, onTapScreen = onTapScreen, hasMainTrack = hasMainTrack, isDiscoverTab = page == 0)
                 }
             }
         }
@@ -301,12 +292,14 @@ private fun TikTokFeed(
     navController: NavHostController,
     isFeedMuted: Boolean,
     onTapScreen: () -> Unit,
-    hasMainTrack: Boolean
+    hasMainTrack: Boolean,
+    isDiscoverTab: Boolean = true
 ) {
     val pagerState = rememberPagerState(pageCount = { tracks.size })
     val isFeedPlaying by viewModel.isFeedPlaying.collectAsState()
 
     val context = LocalContext.current
+    val imageLoader = remember(context) { coil.ImageLoader(context) }
 
     // При смене страницы — автоплей + предзагрузка (mute НЕ сбрасываем — сохраняем состояние)
     LaunchedEffect(pagerState.currentPage) {
@@ -315,7 +308,6 @@ private fun TikTokFeed(
         viewModel.preloadAround(tracks, pagerState.currentPage)
 
         // Предзагрузка картинок соседних треков через Coil
-        val imageLoader = coil.ImageLoader(context)
         val range = ((pagerState.currentPage - 2).coerceAtLeast(0))..(
             (pagerState.currentPage + 3).coerceAtMost(tracks.size - 1))
         for (i in range) {
@@ -324,19 +316,33 @@ private fun TikTokFeed(
             val req = coil.request.ImageRequest.Builder(context).data(url).build()
             imageLoader.enqueue(req)
         }
+
+        // Подгружаем следующую страницу когда осталось 5 треков
+        if (tracks.size - pagerState.currentPage <= 5) {
+            if (isDiscoverTab) viewModel.loadMoreDiscover()
+            else viewModel.loadMoreFollowing()
+        }
     }
 
-    VerticalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+    VerticalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize(),
+        beyondViewportPageCount = 1
+    ) { page ->
         val track = tracks[page]
         val isThisPagePlaying = pagerState.currentPage == page && isFeedPlaying
-        TikTokTrackCard(
-            track = track,
-            isPlaying = isThisPagePlaying,
-            isMuted = isFeedMuted,
-            onTapScreen = onTapScreen,
-            navController = navController,
-            hasMainTrack = hasMainTrack
-        )
+        // key по trackId — Hilt переиспользует ViewModel для одного трека
+        androidx.compose.runtime.key(track.id) {
+            TikTokTrackCard(
+                track = track,
+                isPlaying = isThisPagePlaying,
+                isMuted = isFeedMuted,
+                onTapScreen = onTapScreen,
+                navController = navController,
+                hasMainTrack = hasMainTrack,
+                isCurrentPage = pagerState.currentPage == page
+            )
+        }
     }
 }
 
@@ -348,14 +354,19 @@ private fun TikTokTrackCard(
     onTapScreen: () -> Unit,
     navController: NavHostController,
     hasMainTrack: Boolean = true,
+    isCurrentPage: Boolean = false,
     reviewViewModel: ReviewViewModel = hiltViewModel()
 ) {
     var showStatsSheet by remember { mutableStateOf(false) }
     var showCommentsSheet by remember { mutableStateOf(false) }
     var showReviewsSheet by remember { mutableStateOf(false) }
+    var showAddToPlaylist by remember { mutableStateOf(false) }
 
     val reviewState by reviewViewModel.state.collectAsState()
-    LaunchedEffect(track.id) { reviewViewModel.loadForTrack(track.id) }
+    // Загружаем данные только когда карточка активна
+    LaunchedEffect(track.id, isCurrentPage) {
+        if (isCurrentPage) reviewViewModel.loadForTrack(track.id)
+    }
 
     val avgScore = reviewState.averageRating?.avgOverall
     val commentCount = reviewState.comments.size
@@ -364,9 +375,17 @@ private fun TikTokTrackCard(
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         // Обложка
         if (!track.hdImageUrl.isNullOrEmpty() || !track.imageUrl.isNullOrEmpty()) {
+            val imageUrl = track.hdImageUrl ?: track.imageUrl
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(track.hdImageUrl ?: track.imageUrl).crossfade(false).build(),
-                contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(imageUrl)
+                    .crossfade(false)
+                    .memoryCacheKey(imageUrl)
+                    .diskCacheKey(imageUrl)
+                    .build(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
             )
         } else {
             Box(modifier = Modifier.fillMaxSize().background(ColorSurface), contentAlignment = Alignment.Center) {
@@ -398,52 +417,79 @@ private fun TikTokTrackCard(
 
         // ── Правая панель — строго в столбик ──────────────────────────
         val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        // Если есть мини-плеер: +72dp, всегда +56dp навбар
-        val bottomOffset = navBarHeight + 56.dp + (if (hasMainTrack) 72.dp else 0.dp) + 8.dp
+        // BottomNavigationBar (~56dp) + MiniPlayer (72dp если есть) + запас
+        val miniPlayerHeight = if (hasMainTrack) 72.dp else 0.dp
+        // Чуть ниже — уменьшаем запас с 24 до 8dp
+        val bottomOffset = navBarHeight + 56.dp + miniPlayerHeight + 8.dp
 
+        // Всплывающий комментарий слева от кнопки комментариев
+        var floatingComment by remember { mutableStateOf<String?>(null) }
+        var showFloating by remember { mutableStateOf(false) }
+        val comments = reviewState.comments
+        LaunchedEffect(comments) {
+            if (comments.isNotEmpty()) {
+                while (true) {
+                    delay(5000)
+                    floatingComment = comments.random().comment.take(40)
+                    showFloating = true
+                    delay(3000)
+                    showFloating = false
+                    delay(1000)
+                }
+            }
+        }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 12.dp)
                 .padding(bottom = bottomOffset),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Оценка — круглая кнопка
-            FeedActionButton(onClick = { showStatsSheet = true }) {
+            // Статистика — квадрат, показывает среднюю оценку если есть
+            FeedSquareButton(onClick = { showStatsSheet = true }) {
                 if (avgScore != null) {
-                    Text(String.format("%.1f", avgScore), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(
+                        String.format("%.1f", avgScore),
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = (-0.5).sp
+                    )
                 } else {
-                    Icon(Icons.Default.BarChart, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.BarChart, null, tint = Color.White, modifier = Modifier.size(18.dp))
                 }
             }
 
-            // Комментарии — продолговатая кнопка с числом
-            FeedPillButton(
-                icon = { Icon(Icons.Default.ChatBubbleOutline, null, tint = Color.White, modifier = Modifier.size(18.dp)) },
-                count = commentCount,
-                onClick = { showCommentsSheet = true }
-            )
+            // Комментарии — вертикальный прямоугольник
+            FeedVerticalRect(onClick = { showCommentsSheet = true }, label = "$commentCount") {
+                Icon(Icons.Default.ChatBubbleOutline, null, tint = Color.White, modifier = Modifier.size(17.dp))
+            }
 
-            // Рецензии — продолговатая кнопка с числом
-            FeedPillButton(
-                icon = { Icon(Icons.Default.Star, null, tint = Color.White, modifier = Modifier.size(18.dp)) },
-                count = reviewCount,
-                onClick = { showReviewsSheet = true }
-            )
+            // Рецензии — вертикальный прямоугольник
+            FeedVerticalRect(onClick = { showReviewsSheet = true }, label = "$reviewCount") {
+                Icon(Icons.Default.Star, null, tint = Color.White, modifier = Modifier.size(17.dp))
+            }
 
-            // Добавить в плейлист
-            FeedActionButton(onClick = { /* TODO */ }) {
-                Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(20.dp))
+            // Добавить — квадрат
+            FeedSquareButton(onClick = { showAddToPlaylist = true }) {
+                Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(18.dp))
             }
         }
 
         // ── Нижний текст — ровно над мини-плеером или над навбаром ────
+        val playerViewModel: PlayerViewModel = hiltViewModel()
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 16.dp, end = 76.dp)
                 .padding(bottom = bottomOffset + 4.dp)
+                // Поглощаем все тапы — не пропускаем до фонового Box с mute
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) { awaitPointerEvent() }
+                    }
+                }
         ) {
             track.genre?.takeIf { it.isNotBlank() }?.let { genre ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(bottom = 6.dp)) {
@@ -451,9 +497,37 @@ private fun TikTokTrackCard(
                     Text("Жанр: $genre", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
                 }
             }
-            Text(track.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // Клик на название — запускает трек в плеере
+            Text(
+                track.name,
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { playerViewModel.playTrack(track) }
+            )
             Spacer(modifier = Modifier.height(5.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            // Клик на артиста — открывает профиль
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    navController.navigate(
+                        com.example.lumisound.navigation.MainDestination.Artist().createRoute(
+                            track.artistId,
+                            track.artist,
+                            track.artistImageUrl
+                        )
+                    )
+                }
+            ) {
                 if (!track.artistImageUrl.isNullOrEmpty()) {
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current).data(track.artistImageUrl).crossfade(false).build(),
@@ -465,6 +539,36 @@ private fun TikTokTrackCard(
         }
 
         // Затемнение под sheet
+        // Всплывающий комментарий — вылетает справа, позиционируется над кнопкой комментариев
+        // Снизу: bottomOffset + "+" (44dp) + gap(8dp) + рецензии(~60dp) + gap(8dp) + половина комментариев(~30dp)
+        val floatingCommentBottom = bottomOffset + 44.dp + 8.dp + 60.dp + 8.dp + 30.dp
+        AnimatedVisibility(
+            visible = showFloating && floatingComment != null,
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = androidx.compose.animation.core.tween(400))
+                    + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(300)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = androidx.compose.animation.core.tween(300))
+                   + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200)),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 72.dp)
+                .padding(bottom = floatingCommentBottom)
+        ) {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 200.dp)
+                    .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 10.dp, vertical = 7.dp)
+            ) {
+                Text(
+                    floatingComment ?: "",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
         if (showStatsSheet || showCommentsSheet || showReviewsSheet) {
             Box(
                 modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f))
@@ -475,78 +579,114 @@ private fun TikTokTrackCard(
         }
 
         AnimatedVisibility(visible = showStatsSheet, enter = slideInVertically { it }, exit = slideOutVertically { it }, modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            TrackStatsSheet(state = reviewState, commentCount = commentCount, reviewCount = reviewCount, onDismiss = { showStatsSheet = false })
+            TrackStatsSheet(state = reviewState, bottomBarPadding = bottomOffset, onDismiss = { showStatsSheet = false })
         }
         AnimatedVisibility(visible = showCommentsSheet, enter = slideInVertically { it }, exit = slideOutVertically { it }, modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            CommentsPreviewSheet(state = reviewState, track = track, navController = navController, onDismiss = { showCommentsSheet = false })
+            CommentsPreviewSheet(state = reviewState, track = track, navController = navController, bottomBarPadding = bottomOffset, onDismiss = { showCommentsSheet = false })
         }
         AnimatedVisibility(visible = showReviewsSheet, enter = slideInVertically { it }, exit = slideOutVertically { it }, modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            ReviewsPreviewSheet(state = reviewState, track = track, navController = navController, onDismiss = { showReviewsSheet = false })
+            ReviewsPreviewSheet(state = reviewState, track = track, navController = navController, bottomBarPadding = bottomOffset, onDismiss = { showReviewsSheet = false })
+        }
+
+        // Шторка добавления в плейлист
+        if (showAddToPlaylist) {
+            com.example.lumisound.feature.playlist.AddToPlaylistOverlay(
+                track = track,
+                bottomBarPadding = bottomOffset,
+                onDismiss = { showAddToPlaylist = false }
+            )
         }
     }
 }
 
-// Компактная круглая кнопка правой панели
+// Квадратная кнопка с скруглением (верхняя/нижняя)
 @Composable
-private fun FeedActionButton(
+private fun FeedSquareButton(
     onClick: () -> Unit,
-    label: String? = null,
     content: @Composable () -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
-            contentAlignment = Alignment.Center
-        ) { content() }
-        if (label != null) {
-            Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-        }
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .background(Color.Black.copy(alpha = 0.55f), shape)
+            .border(1.dp, Color.White.copy(alpha = 0.18f), shape)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        content()
     }
 }
 
-// Продолговатая кнопка с иконкой и числом
+// Вертикальный прямоугольник (комментарии / рецензии) — иконка сверху, число снизу
 @Composable
-private fun FeedPillButton(
-    icon: @Composable () -> Unit,
-    count: Int,
-    onClick: () -> Unit
+private fun FeedVerticalRect(
+    onClick: () -> Unit,
+    label: String,
+    content: @Composable () -> Unit
 ) {
-    Row(
+    val shape = RoundedCornerShape(12.dp)
+    Column(
         modifier = Modifier
-            .height(36.dp)
-            .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
-            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(18.dp))
+            .width(44.dp)
+            .background(Color.Black.copy(alpha = 0.55f), shape)
+            .border(1.dp, Color.White.copy(alpha = 0.18f), shape)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() }
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        icon()
-        Text("$count", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        content()
+        Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
 private fun TrackStatsSheet(
     state: com.example.lumisound.feature.ratings.ReviewUiState,
-    commentCount: Int,
-    reviewCount: Int,
+    bottomBarPadding: androidx.compose.ui.unit.Dp = 0.dp,
     onDismiss: () -> Unit
 ) {
+    var dragOffset by remember { mutableStateOf(0f) }
     Column(
         modifier = Modifier.fillMaxWidth()
+            .graphicsLayer { translationY = dragOffset.coerceAtLeast(0f) }
             .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            .navigationBarsPadding().padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(bottom = bottomBarPadding)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragEnd = {
+                        if (dragOffset > 120f) onDismiss() else dragOffset = 0f
+                    },
+                    onDragCancel = { dragOffset = 0f },
+                    onVerticalDrag = { change, delta ->
+                        change.consume()
+                        dragOffset = (dragOffset + delta).coerceAtLeast(0f)
+                    }
+                )
+            }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
     ) {
         Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
         Spacer(modifier = Modifier.height(16.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Средние показатели", color = ColorOnBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Средние показатели", color = ColorOnBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                val ratingCount = state.averageRating?.ratingCount ?: 0
+                if (ratingCount > 0) {
+                    Text(
+                        "$ratingCount ${when {
+                            ratingCount % 100 in 11..19 -> "оценок"
+                            ratingCount % 10 == 1 -> "оценка"
+                            ratingCount % 10 in 2..4 -> "оценки"
+                            else -> "оценок"
+                        }}",
+                        color = ColorSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+            }
             state.averageRating?.avgOverall?.let { score ->
                 Box(modifier = Modifier.background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
                     Text(String.format("%.1f", score) + " / 10", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
@@ -571,20 +711,6 @@ private fun TrackStatsSheet(
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(modifier = Modifier.weight(1f).background(ColorSurface, RoundedCornerShape(10.dp)).padding(12.dp), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$commentCount", color = ColorOnBackground, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("комментариев", color = ColorSecondary, fontSize = 11.sp)
-                }
-            }
-            Box(modifier = Modifier.weight(1f).background(ColorSurface, RoundedCornerShape(10.dp)).padding(12.dp), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$reviewCount", color = ColorOnBackground, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("рецензий", color = ColorSecondary, fontSize = 11.sp)
-                }
-            }
-        }
     }
 }
 
@@ -593,12 +719,28 @@ private fun CommentsPreviewSheet(
     state: com.example.lumisound.feature.ratings.ReviewUiState,
     track: Track,
     navController: NavHostController,
+    bottomBarPadding: androidx.compose.ui.unit.Dp = 0.dp,
     onDismiss: () -> Unit
 ) {
+    var dragOffset by remember { mutableStateOf(0f) }
     Column(
         modifier = Modifier.fillMaxWidth()
+            .graphicsLayer { translationY = dragOffset.coerceAtLeast(0f) }
             .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            .navigationBarsPadding().padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(bottom = bottomBarPadding)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragEnd = {
+                        if (dragOffset > 120f) onDismiss() else dragOffset = 0f
+                    },
+                    onDragCancel = { dragOffset = 0f },
+                    onVerticalDrag = { change, delta ->
+                        change.consume()
+                        dragOffset = (dragOffset + delta).coerceAtLeast(0f)
+                    }
+                )
+            }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
     ) {
         Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
@@ -638,13 +780,29 @@ private fun ReviewsPreviewSheet(
     state: com.example.lumisound.feature.ratings.ReviewUiState,
     track: Track,
     navController: NavHostController,
+    bottomBarPadding: androidx.compose.ui.unit.Dp = 0.dp,
     onDismiss: () -> Unit
 ) {
     val reviews = state.reviews.filter { !it.review.isNullOrBlank() }
+    var dragOffset by remember { mutableStateOf(0f) }
     Column(
         modifier = Modifier.fillMaxWidth()
+            .graphicsLayer { translationY = dragOffset.coerceAtLeast(0f) }
             .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            .navigationBarsPadding().padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(bottom = bottomBarPadding)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragEnd = {
+                        if (dragOffset > 120f) onDismiss() else dragOffset = 0f
+                    },
+                    onDragCancel = { dragOffset = 0f },
+                    onVerticalDrag = { change, delta ->
+                        change.consume()
+                        dragOffset = (dragOffset + delta).coerceAtLeast(0f)
+                    }
+                )
+            }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
     ) {
         Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
@@ -661,16 +819,42 @@ private fun ReviewsPreviewSheet(
             Text("Нет рецензий", color = ColorSecondary, fontSize = 14.sp, modifier = Modifier.padding(vertical = 8.dp))
         } else {
             reviews.take(2).forEach { rating ->
-                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(rating.username ?: "Пользователь", color = ColorSecondary, fontSize = 11.sp)
-                        rating.overallScore?.let { score ->
-                            Box(modifier = Modifier.background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) {
-                                Text(String.format("%.1f", score), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Аватар
+                    Box(
+                        modifier = Modifier.size(30.dp).clip(CircleShape).background(ColorSurface),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!rating.userAvatarUrl.isNullOrEmpty()) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current).data(rating.userAvatarUrl).crossfade(false).build(),
+                                contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(15.dp))
                         }
                     }
-                    Text(rating.review ?: "", color = ColorOnBackground, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                rating.username?.takeIf { it.isNotBlank() } ?: "Пользователь",
+                                color = ColorSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                            )
+                            rating.overallScore?.let { score ->
+                                Box(
+                                    modifier = Modifier
+                                        .background(GradientStart.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                ) {
+                                    Text(String.format("%.1f", score), color = GradientStart, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Text(rating.review ?: "", color = ColorOnBackground, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                    }
                 }
             }
         }
@@ -680,16 +864,33 @@ private fun ReviewsPreviewSheet(
 @Composable
 private fun SearchResultsList(
     results: List<Track>,
+    artistResults: List<com.example.lumisound.data.remote.AudiusArtistFull>,
     isLoading: Boolean,
     error: String?,
     playerStateHolder: com.example.lumisound.data.player.PlayerStateHolder,
-    playerViewModel: PlayerViewModel
+    playerViewModel: PlayerViewModel,
+    navController: NavHostController
 ) {
     when {
         isLoading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = GradientStart) }
         error != null -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(error, color = ColorSecondary, fontSize = 14.sp) }
-        results.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Ничего не найдено", color = ColorSecondary, fontSize = 14.sp) }
+        results.isEmpty() && artistResults.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Ничего не найдено", color = ColorSecondary, fontSize = 14.sp) }
         else -> LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Показываем только 1 артиста сверху — только если имя сильно совпадает
+            val topArtist = artistResults.firstOrNull()
+            if (topArtist != null) {
+                item(key = "artist_${topArtist.id}") {
+                    ArtistSearchCard(artist = topArtist, onArtistClick = {
+                        navController.navigate(
+                            com.example.lumisound.navigation.MainDestination.Artist().createRoute(
+                                topArtist.id,
+                                topArtist.name,
+                                com.example.lumisound.data.remote.AudiusApiServiceHelper.getProfilePictureUrl(topArtist.profilePicture)
+                            )
+                        )
+                    })
+                }
+            }
             itemsIndexed(results, key = { _, t -> t.id }) { index, track ->
                 SearchResultItem(track = track, onClick = {
                     playerStateHolder.setPlaylist(results, index)
@@ -701,27 +902,108 @@ private fun SearchResultsList(
 }
 
 @Composable
+private fun ArtistSearchCard(
+    artist: com.example.lumisound.data.remote.AudiusArtistFull,
+    onArtistClick: () -> Unit
+) {
+    val avatarUrl = com.example.lumisound.data.remote.AudiusApiServiceHelper.getProfilePictureUrl(artist.profilePicture)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ColorSurface, RoundedCornerShape(14.dp))
+            .border(1.dp, GradientStart.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onArtistClick() }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Аватар — круглый, чуть крупнее трека
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.06f))
+        ) {
+            if (!avatarUrl.isNullOrEmpty()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current).data(avatarUrl).crossfade(false).build(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(26.dp))
+                }
+            }
+        }
+
+        // Инфо
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    artist.name,
+                    color = ColorOnBackground,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (artist.isVerified == true) {
+                    Icon(Icons.Default.CheckCircle, null, tint = GradientStart, modifier = Modifier.size(13.dp))
+                }
+            }
+            val sub = buildString {
+                if (!artist.location.isNullOrBlank()) append(artist.location)
+                if (!artist.location.isNullOrBlank() && (artist.followerCount ?: 0) > 0) append(" · ")
+                if ((artist.followerCount ?: 0) > 0) append(formatFollowers(artist.followerCount!!))
+            }
+            if (sub.isNotBlank()) Text(sub, color = ColorSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+
+        // Иконка артиста справа
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .background(GradientStart.copy(alpha = 0.15f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Person, null, tint = GradientStart, modifier = Modifier.size(16.dp))
+        }
+    }
+}
+
+private fun formatFollowers(count: Int): String = when {
+    count >= 1_000_000 -> "${count / 1_000_000}M подписчиков"
+    count >= 1_000 -> "${String.format("%.1f", count / 1000.0).trimEnd('0').trimEnd('.')}K подписчиков"
+    else -> "$count подписчиков"
+}
+
+@Composable
 private fun SearchResultItem(track: Track, onClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth()
-            .background(ColorSurface.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
-            .border(1.dp, Color(0xFF1F1F1F).copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .background(ColorSurface, RoundedCornerShape(14.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() }
-            .padding(12.dp),
+            .padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)).background(ColorSurface)) {
+        Box(modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.06f))) {
             if (!track.imageUrl.isNullOrEmpty()) {
-                AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(track.imageUrl).crossfade(false).build(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current).data(track.imageUrl).crossfade(false).build(),
+                    contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                )
             } else {
-                Icon(Icons.Default.MusicNote, null, tint = ColorSecondary.copy(alpha = 0.5f), modifier = Modifier.size(28.dp).align(Alignment.Center))
+                Icon(Icons.Default.MusicNote, null, tint = ColorSecondary.copy(alpha = 0.5f), modifier = Modifier.size(24.dp).align(Alignment.Center))
             }
         }
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(track.name, color = ColorOnBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(track.artist, color = ColorSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            track.genre?.takeIf { it.isNotBlank() }?.let { Text(it, color = ColorSecondary.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1) }
         }
     }
 }

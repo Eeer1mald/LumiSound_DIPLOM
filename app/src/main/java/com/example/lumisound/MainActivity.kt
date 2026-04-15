@@ -2,7 +2,6 @@ package com.example.lumisound
 
 import android.os.Build
 import android.os.Bundle
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -15,21 +14,16 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    // Стартует сразу при создании Activity — параллельно грузит все данные
     private val preloadViewModel: AppPreloadViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        
-        // Запрашиваем максимальный refresh rate для плавности на 120Hz экранах
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.attributes = window.attributes.also { attrs ->
-                attrs.preferredDisplayModeId = display
-                    ?.supportedModes
-                    ?.maxByOrNull { it.refreshRate }
-                    ?.modeId ?: 0
+                attrs.preferredDisplayModeId = display?.supportedModes?.maxByOrNull { it.refreshRate }?.modeId ?: 0
             }
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             @Suppress("DEPRECATION")
@@ -37,10 +31,23 @@ class MainActivity : ComponentActivity() {
                 attrs.preferredRefreshRate = display?.refreshRate ?: 60f
             }
         }
-        
+
+        // Проверяем deep link синтеза — поддерживаем оба формата
+        val synthesisCode = intent?.data?.let { uri ->
+            when {
+                // lumisound://synthesis/{code}
+                uri.scheme == "lumisound" && uri.host == "synthesis" ->
+                    uri.pathSegments.firstOrNull()
+                // https://...supabase.co/synthesis?code={code}
+                uri.scheme == "https" && uri.path?.startsWith("/synthesis") == true ->
+                    uri.getQueryParameter("code")
+                else -> null
+            }
+        }
+
         setContent {
             LumiSoundTheme {
-                AuthNavGraph()
+                AuthNavGraph(synthesisInviteCode = synthesisCode)
             }
         }
     }

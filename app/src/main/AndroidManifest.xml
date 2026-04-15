@@ -31,6 +31,18 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="lumisound" android:host="auth.callback" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lumisound" android:host="synthesis" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="dmwnegtvotnrajzpyfad.supabase.co" android:pathPrefix="/synthesis" />
+            </intent-filter>
         </activity>
         
         <activity

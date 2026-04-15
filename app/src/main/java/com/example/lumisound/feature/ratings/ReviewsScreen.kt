@@ -241,7 +241,10 @@ fun ReviewsScreen(
                                 isVoting = state.votingIds.contains(rating.id),
                                 onVote = { vote -> viewModel.voteReview(track.id, rating.id, vote) },
                                 onProfileClick = { userId ->
-                                    navController?.navigate("profile/$userId")
+                                    navController?.navigate(
+                                        com.example.lumisound.navigation.MainDestination.PublicProfile()
+                                            .createRoute(userId, rating.username ?: "Пользователь", rating.userAvatarUrl)
+                                    )
                                 }
                             )
                         }
@@ -585,7 +588,7 @@ private fun ReviewCard(
     }
 
     val isOwn = currentUserId != null && rating.userId == currentUserId
-    val displayName = rating.username?.takeIf { it.isNotBlank() } ?: if (isOwn) "Вы" else "Пользователь"
+    val displayName = rating.username?.takeIf { it.isNotBlank() } ?: "Пользователь"
     var showCriteria by remember { mutableStateOf(false) }
 
     Column(
@@ -605,7 +608,7 @@ private fun ReviewCard(
                 Box(
                     modifier = Modifier.size(32.dp).clip(CircleShape).background(ColorSurface)
                         .then(
-                            if (onProfileClick != null && rating.userId != null)
+                            if (onProfileClick != null && rating.userId != null && !isOwn)
                                 Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onProfileClick(rating.userId) }
                             else Modifier
                         ),
@@ -627,20 +630,21 @@ private fun ReviewCard(
                     Text(dateStr, color = ColorSecondary, fontSize = 11.sp)
                 }
             }
-            // Квадрат с оценкой — стальной синий, отличается от кружка
+            // Квадрат с оценкой — тёмный с фиолетовым акцентом
             rating.overallScore?.let { score ->
                 Box(
                     modifier = Modifier
                         .background(
-                            brush = Brush.linearGradient(listOf(Color(0xFF2979FF), Color(0xFF00B0FF))),
+                            color = Color(0xFF1E1E1E),
                             shape = RoundedCornerShape(8.dp)
                         )
+                        .border(1.dp, GradientStart.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             showCriteria = !showCriteria
                         }
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
-                    Text(String.format("%.1f", score), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(String.format("%.1f", score), color = GradientStart, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
                 }
             }
         }
@@ -715,13 +719,14 @@ private fun ReviewCard(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        enabled = !isVoting
+                        enabled = !isVoting && !isOwn
                     ) { onVote(1) },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     "↑",
                     color = when {
+                        isOwn -> ColorSecondary.copy(alpha = 0.3f)
                         isVoting -> ColorSecondary.copy(alpha = 0.4f)
                         myVote == 1 -> Color(0xFF2ECC71)
                         else -> ColorSecondary
@@ -761,13 +766,14 @@ private fun ReviewCard(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        enabled = !isVoting
+                        enabled = !isVoting && !isOwn
                     ) { onVote(-1) },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     "↓",
                     color = when {
+                        isOwn -> ColorSecondary.copy(alpha = 0.3f)
                         isVoting -> ColorSecondary.copy(alpha = 0.4f)
                         myVote == -1 -> Color(0xFFE74C3C)
                         else -> ColorSecondary

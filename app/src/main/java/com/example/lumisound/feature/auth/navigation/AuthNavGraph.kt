@@ -4,11 +4,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.lumisound.data.local.SessionManager
 import com.example.lumisound.feature.auth.login.LoginScreen
 import com.example.lumisound.feature.auth.navigation.AuthDestination
 import com.example.lumisound.feature.auth.profilesetup.ProfileSetupScreen
@@ -16,12 +19,28 @@ import com.example.lumisound.feature.auth.register.RegisterScreen
 import com.example.lumisound.feature.auth.register.VerifyEmailScreen
 import com.example.lumisound.feature.auth.welcome.AuthWelcomeScreen
 import com.example.lumisound.feature.home.HomeScreen
+import dagger.hilt.android.EntryPointAccessors
 
 @Composable
 fun AuthNavGraph(
     navController: NavHostController = rememberNavController(),
-    startDestination: String = AuthDestination.Welcome.route
+    synthesisInviteCode: String? = null
 ) {
+    val context = LocalContext.current
+    // Проверяем токен — если залогинен, сразу на home
+    val startDestination = remember {
+        try {
+            val sessionManager = EntryPointAccessors.fromApplication(
+                context.applicationContext,
+                AuthNavGraphEntryPoint::class.java
+            ).sessionManager()
+            if (!sessionManager.getAccessToken().isNullOrBlank()) "home"
+            else AuthDestination.Welcome.route
+        } catch (e: Exception) {
+            AuthDestination.Welcome.route
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = startDestination
@@ -31,7 +50,7 @@ fun AuthNavGraph(
         addRegisterDestination(navController)
         addVerifyEmailDestination(navController)
         addProfileSetupDestination(navController)
-        addHomeDestination(navController)
+        addHomeDestination(navController, synthesisInviteCode)
     }
 }
 
@@ -180,11 +199,12 @@ private fun NavGraphBuilder.addProfileSetupDestination(navController: NavHostCon
     }
 }
 
-private fun NavGraphBuilder.addHomeDestination(navController: NavHostController) {
+private fun NavGraphBuilder.addHomeDestination(navController: NavHostController, synthesisInviteCode: String? = null) {
     composable("home") {
         com.example.lumisound.navigation.MainNavGraph(
             startDestination = "home",
-            userName = "Александр"
+            userName = "Александр",
+            synthesisInviteCode = synthesisInviteCode
         )
     }
 }

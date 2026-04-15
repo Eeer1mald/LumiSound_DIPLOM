@@ -134,7 +134,6 @@ fun PlayerScreen(
     val isPlaying by viewModel.isPlaying.collectAsState()
     val currentPosition by viewModel.currentPosition.collectAsState()
     val duration by viewModel.duration.collectAsState()
-    var isLiked by remember { mutableStateOf(false) }
 
     LaunchedEffect(track.id) {
         viewModel.syncPlayerState()
@@ -171,6 +170,7 @@ fun PlayerScreen(
     var closeProgress by remember { mutableStateOf(0f) }
     var isDraggingToClose by remember { mutableStateOf(false) }
     var targetCloseProgress by remember { mutableStateOf(0f) }
+    var showAddToPlaylist by remember { mutableStateOf(false) }
 
     val animatedCloseProgress by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetCloseProgress,
@@ -447,8 +447,8 @@ fun PlayerScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.size(44.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { isLiked = !isLiked }, contentAlignment = Alignment.Center) {
-                        Icon(imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = "Like", tint = if (isLiked) GradientStart else ColorSecondary, modifier = Modifier.size(24.dp))
+                    Box(modifier = Modifier.size(44.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showAddToPlaylist = true }, contentAlignment = Alignment.Center) {
+                        Icon(imageVector = Icons.Default.Add, contentDescription = "Add", tint = ColorSecondary, modifier = Modifier.size(24.dp))
                     }
                     Box(modifier = Modifier.size(56.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.previousTrack() }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.SkipPrevious, "Previous", tint = ColorOnBackground, modifier = Modifier.size(36.dp))
@@ -503,5 +503,13 @@ fun PlayerScreen(
                     )
                 }
         )
-    }
+
+        // Шторка добавления в плейлист
+        if (showAddToPlaylist) {
+            com.example.lumisound.feature.playlist.AddToPlaylistOverlay(
+                track = track,
+                onDismiss = { showAddToPlaylist = false }
+            )
+        }
+    } // закрываем корневой Box
 }

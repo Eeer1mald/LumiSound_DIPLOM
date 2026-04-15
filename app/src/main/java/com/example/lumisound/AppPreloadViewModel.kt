@@ -21,7 +21,8 @@ import javax.inject.Inject
 class AppPreloadViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val musicRepository: MusicRepository,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val playerStateHolder: com.example.lumisound.data.player.PlayerStateHolder
 ) : ViewModel() {
 
     private val _isPreloaded = MutableStateFlow(false)
@@ -31,45 +32,58 @@ class AppPreloadViewModel @Inject constructor(
         preloadAll()
     }
 
+    fun triggerPreload() {
+        // Если трек уже установлен — не перезапускаем
+        if (playerStateHolder.currentTrack.value != null) return
+        preloadAll()
+    }
+
     private fun preloadAll() {
         val token = sessionManager.getAccessToken() ?: return
 
         viewModelScope.launch {
-            // Всё параллельно через async
-            val profileJob = async {
-                runCatching { authRepository.getProfile(token) }
-            }
-            val ratingsJob = async {
-                runCatching { authRepository.getMyRatings(token, limit = 50) }
-            }
-            val commentsJob = async {
-                runCatching { authRepository.getMyComments(token, limit = 50) }
-            }
+            val profileJob = async { runCatching { authRepository.getProfile(token) } }
+            val ratingsJob = async { runCatching { authRepository.getMyRatings(token, limit = 50) } }
+            val commentsJob = async { runCatching { authRepository.getMyComments(token, limit = 50) } }
             val favTracksJob = async {
                 runCatching { authRepository.getFavoriteTracks(token, limit = 20, orderByPlayCount = true) }
             }
-            val favArtistsJob = async {
-                runCatching { authRepository.getFavoriteArtists(token, limit = 20) }
-            }
-            val discoverJob = async {
-                runCatching { musicRepository.getDiscoverFeed(30) }
-            }
-            val followingJob = async {
-                runCatching { musicRepository.getFollowingFeed(30) }
-            }
-            val homeRecsJob = async {
-                runCatching { musicRepository.searchTracks("", limit = 10) }
+            val favArtistsJob = async { runCatching { authRepository.getFavoriteArtists(token, limit = 20) } }
+            // Быстрый поиск для fallback мини-плеера
+            val quickSearchJob = async { runCatching { musicRepository.searchTracks("popular", limit = 5) } }
+            val discoverJob = async { runCatching { musicRepository.getDiscoverFeed(30) } }
+            val followingJob = async { runCatching { musicRepository.getFollowingFeed(30) } }
+
+            // Ждём favTracks и быстрый поиск параллельно
+            val favTracks = favTracksJob.await()
+            val quickTracks = quickSearchJob.await()
+
+            // Устанавливаем трек: приоритет — избранное, потом быстрый поиск
+            val fromFav = favTracks.getOrNull()?.getOrNull()?.firstOrNull { !it.trackPreviewUrl.isNullOrBlank() }
+            if (fromFav != null) {
+                playerStateHolder.setCurrentTrack(
+                    com.example.lumisound.data.model.Track(
+                        id = fromFav.trackId,
+                        name = fromFav.trackTitle,
+                        artist = fromFav.trackArtist,
+                        imageUrl = fromFav.trackCoverUrl,
+                        previewUrl = fromFav.trackPreviewUrl
+                    )
+                )
+            } else {
+                // Fallback: первый трек из быстрого поиска
+                quickTracks.getOrNull()?.getOrNull()?.firstOrNull { !it.previewUrl.isNullOrBlank() }?.let { t ->
+                    playerStateHolder.setCurrentTrack(t)
+                }
             }
 
-            // Ждём завершения всех — результаты уже закэшированы в репозиториях/ViewModels
+            // Ждём остальные в фоне
             profileJob.await()
             ratingsJob.await()
             commentsJob.await()
-            favTracksJob.await()
             favArtistsJob.await()
             discoverJob.await()
             followingJob.await()
-            homeRecsJob.await()
 
             _isPreloaded.value = true
         }

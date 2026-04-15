@@ -110,7 +110,8 @@ private fun getTabIndex(route: String?): Int {
 fun MainNavGraph(
     navController: NavHostController = rememberNavController(),
     startDestination: String = MainDestination.Home.route,
-    userName: String = "Александр"
+    userName: String = "Александр",
+    synthesisInviteCode: String? = null
 ) {
     val context = LocalContext.current
     val playerStateHolder = remember {
@@ -190,6 +191,7 @@ fun MainNavGraph(
                 navController = navController,
                 currentRoute = "home",
                 userName = userName,
+                synthesisInviteCode = synthesisInviteCode,
                 onNavigate = { route -> navController.navigate(route) }
             )
         }
@@ -367,7 +369,19 @@ fun MainNavGraph(
             enterTransition = { fadeIn(animationSpec = tween(200)) },
             exitTransition = { fadeOut(animationSpec = tween(200)) }
         ) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            val context = LocalContext.current
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onLogout = {
+                    // Перезапускаем Activity — самый надёжный способ сбросить всё состояние
+                    val activity = context as? android.app.Activity
+                    activity?.let {
+                        val intent = it.intent
+                        it.finish()
+                        it.startActivity(intent)
+                    }
+                }
+            )
         }
 
         composable(

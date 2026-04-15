@@ -58,9 +58,33 @@ class ReviewViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true, error = null)
             val existing = authRepository.getMyTrackRating(token, audiusTrackId)
             val comments = authRepository.getTrackComments(token, audiusTrackId)
-            val reviews = authRepository.getTrackReviews(token, audiusTrackId)
+            val rawReviews = authRepository.getTrackReviews(token, audiusTrackId)
             val profile = authRepository.getProfile(token).getOrNull()
             val averageRating = authRepository.getTrackAverageRating(token, audiusTrackId)
+
+            // Обогащаем рецензии реальными данными профиля если username/avatar отсутствуют
+            // Один батч-запрос вместо N отдельных
+            val missingProfileIds = rawReviews
+                .filter { it.username.isNullOrBlank() || it.userAvatarUrl.isNullOrBlank() }
+                .mapNotNull { it.userId }
+                .distinct()
+            val profilesMap = if (missingProfileIds.isNotEmpty())
+                authRepository.getProfilesByIds(missingProfileIds)
+            else emptyMap()
+
+            val reviews = rawReviews.map { review ->
+                val needsEnrich = review.username.isNullOrBlank() || review.userAvatarUrl.isNullOrBlank()
+                if (needsEnrich && review.userId != null) {
+                    val p = profilesMap[review.userId]
+                    if (p != null) {
+                        review.copy(
+                            username = review.username?.takeIf { it.isNotBlank() } ?: p.username,
+                            userAvatarUrl = review.userAvatarUrl?.takeIf { it.isNotBlank() } ?: p.avatarUrl
+                        )
+                    } else review
+                } else review
+            }
+
             _state.value = _state.value.copy(
                 isLoading = false,
                 existingRating = existing,

@@ -16,13 +16,17 @@ import com.example.lumisound.navigation.MainDestination
 fun ScreenContent(
     route: String,
     navController: NavHostController,
-    userName: String
+    userName: String,
+    synthesisInviteCode: String? = null,
+    realAvatarUrl: String? = null
 ) {
     when (route) {
         "home" -> key(route) {
             HomeScreen(
                 navController = navController,
-                userName = userName
+                userName = userName,
+                synthesisInviteCode = synthesisInviteCode,
+                creatorAvatarUrl = realAvatarUrl
             )
         }
         "search" -> key(route) {

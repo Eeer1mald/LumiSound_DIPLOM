@@ -56,6 +56,10 @@ android {
         compose = true
         buildConfig = true
     }
+    composeOptions {
+        // Strong skipping mode — пропускает рекомпозицию нестабильных параметров
+    }
+    // Compose compiler metrics для отладки (опционально)
 }
 
 dependencies {

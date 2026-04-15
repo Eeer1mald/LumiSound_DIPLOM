@@ -61,6 +61,11 @@ data class AudiusTracksResponse(
 )
 
 @Serializable
+data class AudiusArtistSearchResponse(
+    val data: List<AudiusArtistFull>? = null
+)
+
+@Serializable
 data class AudiusSearchResponse(
     val data: List<AudiusTrack>? = null
 )
@@ -114,6 +119,21 @@ class AudiusApiService @Inject constructor(
         ignoreUnknownKeys = true
         isLenient = true
         explicitNulls = false
+    }
+
+    suspend fun searchArtists(query: String, limit: Int = 3): Result<List<AudiusArtistFull>> {
+        return runCatching {
+            makeRequestWithFallback("/v1/users/search") { baseUrl ->
+                val response = httpClient.get {
+                    url(baseUrl)
+                    parameter("query", query)
+                    parameter("limit", limit)
+                    parameter("app_name", APP_NAME)
+                }.body<String>()
+                val searchResponse = json.decodeFromString(AudiusArtistSearchResponse.serializer(), response)
+                searchResponse.data ?: emptyList()
+            }
+        }
     }
 
     suspend fun searchTracks(query: String, limit: Int = 10): Result<List<AudiusTrack>> {
@@ -180,5 +200,61 @@ class AudiusApiService @Inject constructor(
 
     fun getStreamUrl(trackId: String): String {
         return "$currentHost/v1/tracks/$trackId/stream"
+    }
+
+    // Получить трек по ID
+    suspend fun getTrackById(trackId: String): Result<AudiusTrack> {
+        return runCatching {
+            makeRequestWithFallback("/v1/tracks/$trackId") { baseUrl ->
+                val response = httpClient.get {
+                    url(baseUrl)
+                    parameter("app_name", APP_NAME)
+                }.body<String>()
+                @Serializable data class SingleTrackResponse(val data: AudiusTrack? = null)
+                val parsed = json.decodeFromString(SingleTrackResponse.serializer(), response)
+                parsed.data ?: throw Exception("Track $trackId not found")
+            }
+        }
+    }
+
+    // Trending треки — используется как fallback когда нет избранного
+    suspend fun getTrendingTracks(limit: Int = 20, genre: String? = null): Result<List<AudiusTrack>> {
+        return runCatching {
+            makeRequestWithFallback("/v1/tracks/trending") { baseUrl ->
+                val response = httpClient.get {
+                    url(baseUrl)
+                    parameter("limit", limit)
+                    parameter("app_name", APP_NAME)
+                    genre?.let { parameter("genre", it) }
+                }.body<String>()
+                val tracksResponse = json.decodeFromString(AudiusTracksResponse.serializer(), response)
+                tracksResponse.data ?: emptyList()
+            }
+        }
+    }
+
+    // Underground trending — разнообразие для рекомендаций
+    suspend fun getUndergroundTrendingTracks(limit: Int = 20): Result<List<AudiusTrack>> {
+        return runCatching {
+            makeRequestWithFallback("/v1/tracks/trending/underground") { baseUrl ->
+                val response = httpClient.get {
+                    url(baseUrl)
+                    parameter("limit", limit)
+                    parameter("app_name", APP_NAME)
+                }.body<String>()
+                val tracksResponse = json.decodeFromString(AudiusTracksResponse.serializer(), response)
+                tracksResponse.data ?: emptyList()
+            }
+        }
+    }
+}
+
+// Статический хелпер для использования в Composable без инжекции
+object AudiusApiServiceHelper {
+    fun getProfilePictureUrl(profilePicture: kotlinx.serialization.json.JsonObject?): String? {
+        return profilePicture?.get("480x480")?.jsonPrimitive?.content
+            ?: profilePicture?.get("150x150")?.jsonPrimitive?.content
+            ?: profilePicture?.get("1000x1000")?.jsonPrimitive?.content
+            ?: profilePicture?.get("200x200")?.jsonPrimitive?.content
     }
 }

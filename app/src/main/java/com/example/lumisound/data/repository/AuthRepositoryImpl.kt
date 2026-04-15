@@ -121,6 +121,14 @@ class AuthRepositoryImpl @Inject constructor(
             supabase.getProfile(accessToken).also { cachedProfile = it }
         }
     }
+
+    override suspend fun getProfileById(userId: String): SupabaseService.ProfileResponse? {
+        return supabase.getProfileById(userId)
+    }
+
+    override suspend fun getProfilesByIds(userIds: List<String>): Map<String, SupabaseService.ProfileResponse> {
+        return supabase.getProfilesByIds(userIds)
+    }
     
     override suspend fun getFavoriteTracks(accessToken: String, limit: Int, orderByPlayCount: Boolean): Result<List<SupabaseService.FavoriteTrackResponse>> {
         cachedFavTracks?.let { return Result.success(it) }
@@ -212,5 +220,89 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun getMyVoteForReview(accessToken: String, ratingId: String): Int? {
         return supabase.getMyVoteForReview(accessToken, ratingId)
+    }
+
+    override suspend fun createPlaylist(accessToken: String, name: String, description: String?, isPublic: Boolean): Result<SupabaseService.PlaylistResponse> {
+        return supabase.createPlaylist(accessToken, name, description, isPublic)
+    }
+
+    override suspend fun getMyPlaylists(accessToken: String): List<SupabaseService.PlaylistResponse> {
+        return supabase.getMyPlaylists(accessToken)
+    }
+
+    override suspend fun deletePlaylist(accessToken: String, playlistId: String): Result<Unit> {
+        return supabase.deletePlaylist(accessToken, playlistId)
+    }
+
+    override suspend fun updatePlaylistTrackCount(accessToken: String, playlistId: String, count: Int): Result<Unit> {
+        return supabase.updatePlaylistTrackCount(accessToken, playlistId, count)
+    }
+
+    override suspend fun updatePlaylistVisibility(accessToken: String, playlistId: String, isPublic: Boolean): Result<Unit> {
+        return supabase.updatePlaylistVisibility(accessToken, playlistId, isPublic)
+    }
+
+    override suspend fun updatePlaylistName(accessToken: String, playlistId: String, name: String, description: String?): Result<Unit> {
+        return supabase.updatePlaylistName(accessToken, playlistId, name, description)
+    }
+
+    override suspend fun uploadPlaylistCover(accessToken: String, playlistId: String, fileBytes: ByteArray): Result<String> {
+        return supabase.uploadPlaylistCover(accessToken, playlistId, fileBytes)
+    }
+
+    override suspend fun updatePlaylistCover(accessToken: String, playlistId: String, coverUrl: String): Result<Unit> {
+        return supabase.updatePlaylistCover(accessToken, playlistId, coverUrl)
+    }
+
+    override suspend fun addTrackToPlaylist(accessToken: String, track: SupabaseService.PlaylistTrackInsert): Result<Unit> {
+        return supabase.addTrackToPlaylist(accessToken, track)
+    }
+
+    override suspend fun getPlaylistTracks(accessToken: String, playlistId: String): List<SupabaseService.PlaylistTrackResponse> {
+        return supabase.getPlaylistTracks(accessToken, playlistId)
+    }
+
+    override suspend fun removeTrackFromPlaylist(accessToken: String, playlistId: String, trackId: String): Result<Unit> {
+        return supabase.removeTrackFromPlaylist(accessToken, playlistId, trackId)
+    }
+
+    override suspend fun getPublicPlaylists(accessToken: String, limit: Int): List<SupabaseService.PlaylistResponse> {
+        return supabase.getPublicPlaylists(accessToken, limit)
+    }
+
+    override suspend fun getRecommendedPlaylists(accessToken: String, favoriteArtistNames: List<String>, limit: Int): List<SupabaseService.PlaylistResponse> {
+        return supabase.getRecommendedPlaylists(accessToken, favoriteArtistNames, limit)
+    }
+
+    override suspend fun likePlaylist(accessToken: String, playlistId: String): Result<Unit> {
+        return supabase.likePlaylist(accessToken, playlistId)
+    }
+
+    override suspend fun unlikePlaylist(accessToken: String, playlistId: String): Result<Unit> {
+        return supabase.unlikePlaylist(accessToken, playlistId)
+    }
+
+    override suspend fun getMyLikedPlaylistIds(accessToken: String): Set<String> {
+        return supabase.getMyLikedPlaylistIds(accessToken)
+    }
+
+    override suspend fun isPlaylistLiked(accessToken: String, playlistId: String): Boolean {
+        return supabase.isPlaylistLiked(accessToken, playlistId)
+    }
+
+    override suspend fun createSynthesisSession(accessToken: String, creatorUsername: String?): Result<SupabaseService.SynthesisSession> {
+        return supabase.createSynthesisSession(accessToken, creatorUsername)
+    }
+
+    override suspend fun getSynthesisSession(accessToken: String, inviteCode: String): Result<SupabaseService.SynthesisSession> {
+        return supabase.getSynthesisSession(accessToken, inviteCode)
+    }
+
+    override suspend fun joinSynthesisSession(accessToken: String, sessionId: String, username: String?, avatarUrl: String?): Result<Unit> {
+        return supabase.joinSynthesisSession(accessToken, sessionId, username, avatarUrl)
+    }
+
+    override suspend fun getSynthesisParticipants(accessToken: String, sessionId: String): List<SupabaseService.SynthesisParticipant> {
+        return supabase.getSynthesisParticipants(accessToken, sessionId)
     }
 }

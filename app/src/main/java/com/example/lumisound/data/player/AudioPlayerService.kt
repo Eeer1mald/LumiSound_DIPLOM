@@ -54,7 +54,9 @@ class AudioPlayerService @Inject constructor(
     }
     
     fun getDuration(): Long {
-        return exoPlayer?.duration ?: 0L
+        val dur = exoPlayer?.duration ?: 0L
+        // ExoPlayer возвращает Long.MAX_VALUE пока трек не загружен
+        return if (dur == Long.MAX_VALUE || dur < 0) 0L else dur
     }
     
     fun isPlaying(): Boolean {

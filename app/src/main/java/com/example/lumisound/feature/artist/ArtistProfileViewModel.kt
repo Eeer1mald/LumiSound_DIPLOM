@@ -28,12 +28,32 @@ class ArtistProfileViewModel @Inject constructor(
     private val _state = MutableStateFlow(ArtistProfileState())
     val state: StateFlow<ArtistProfileState> = _state
 
-    fun load(artistId: String, fallbackName: String, fallbackImageUrl: String?) {
+    fun load(artistId: String?, fallbackName: String, fallbackImageUrl: String?) {
         viewModelScope.launch {
             _state.value = ArtistProfileState(isLoading = true)
 
+            // Если artistId пустой — ищем по имени
+            val resolvedId: String? = if (!artistId.isNullOrBlank()) {
+                artistId
+            } else if (fallbackName.isNotBlank()) {
+                audiusApi.searchArtists(fallbackName, limit = 3).getOrNull()
+                    ?.firstOrNull { it.name.equals(fallbackName, ignoreCase = true) }?.id
+                    ?: audiusApi.searchArtists(fallbackName, limit = 1).getOrNull()?.firstOrNull()?.id
+            } else {
+                null
+            }
+
+            if (resolvedId.isNullOrBlank()) {
+                _state.value = ArtistProfileState(
+                    isLoading = false,
+                    avatarUrl = fallbackImageUrl,
+                    error = "Артист не найден"
+                )
+                return@launch
+            }
+
             // Загружаем данные артиста
-            val artistResult = audiusApi.getArtist(artistId)
+            val artistResult = audiusApi.getArtist(resolvedId)
             val artist = artistResult.getOrNull()
 
             val avatarUrl = artist?.let {
@@ -45,7 +65,7 @@ class ArtistProfileViewModel @Inject constructor(
             }
 
             // Загружаем треки артиста
-            val tracksResult = audiusApi.getArtistTracks(artistId, limit = 10)
+            val tracksResult = audiusApi.getArtistTracks(resolvedId, limit = 10)
             val tracks = tracksResult.getOrNull()?.map { t ->
                 val artworkUrl = audiusApi.getArtworkUrl(t.artwork, "480x480")
                 val hdUrl = audiusApi.getArtworkUrl(t.artwork, "1000x1000")
