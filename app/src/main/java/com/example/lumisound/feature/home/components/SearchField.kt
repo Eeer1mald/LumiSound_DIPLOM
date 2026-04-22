@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.home.components
+﻿package com.example.lumisound.feature.home.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,9 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun SearchField(
@@ -50,7 +48,7 @@ fun SearchField(
                 shape = RoundedCornerShape(14.dp)
             )
             .background(
-                color = ColorSurface.copy(alpha = 0.8f),
+                color = LocalAppColors.current.surface.copy(alpha = 0.8f),
                 shape = RoundedCornerShape(14.dp)
             )
             .testTag("home_search"),
@@ -66,13 +64,13 @@ fun SearchField(
             Icon(
                 imageVector = Icons.Default.Search,
                 contentDescription = null,
-                tint = ColorSecondary,
+                tint = LocalAppColors.current.secondary,
                 modifier = Modifier.size(18.dp)
             )
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = ColorOnBackground),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = LocalAppColors.current.onBackground),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { onSearchClick?.invoke() }),
                 modifier = Modifier
@@ -84,7 +82,7 @@ fun SearchField(
                         if (value.isEmpty()) {
                             Text(
                                 text = placeholder,
-                                style = MaterialTheme.typography.bodyMedium.copy(color = ColorSecondary.copy(alpha = 0.7f)),
+                                style = MaterialTheme.typography.bodyMedium.copy(color = LocalAppColors.current.secondary.copy(alpha = 0.7f)),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )

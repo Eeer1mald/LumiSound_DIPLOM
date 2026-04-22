@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.playlist
+﻿package com.example.lumisound.feature.playlist
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -64,12 +64,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.example.lumisound.data.model.Track
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 import kotlinx.coroutines.delay
 
 /**
@@ -187,7 +184,7 @@ private fun AddToPlaylistSheet(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(ColorSurface)
+                    .background(LocalAppColors.current.surface)
             ) {
                 if (!track.imageUrl.isNullOrEmpty()) {
                     AsyncImage(
@@ -199,7 +196,7 @@ private fun AddToPlaylistSheet(
                 } else {
                     Icon(
                         Icons.Default.MusicNote, null,
-                        tint = ColorSecondary,
+                        tint = LocalAppColors.current.secondary,
                         modifier = Modifier.size(22.dp).align(Alignment.Center)
                     )
                 }
@@ -207,12 +204,12 @@ private fun AddToPlaylistSheet(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     "Добавить в плейлист",
-                    color = ColorSecondary,
+                    color = LocalAppColors.current.secondary,
                     fontSize = 12.sp
                 )
                 Text(
                     track.name,
-                    color = ColorOnBackground,
+                    color = LocalAppColors.current.onBackground,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -220,7 +217,7 @@ private fun AddToPlaylistSheet(
                 )
                 Text(
                     track.artist,
-                    color = ColorSecondary,
+                    color = LocalAppColors.current.secondary,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -263,12 +260,12 @@ private fun AddToPlaylistSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .background(ColorSurface, RoundedCornerShape(16.dp))
+                    .background(LocalAppColors.current.surface, RoundedCornerShape(16.dp))
                     .padding(16.dp)
             ) {
                 Text(
                     "Новый плейлист",
-                    color = ColorOnBackground,
+                    color = LocalAppColors.current.onBackground,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -276,14 +273,14 @@ private fun AddToPlaylistSheet(
                 OutlinedTextField(
                     value = newPlaylistName,
                     onValueChange = { newPlaylistName = it },
-                    placeholder = { Text("Название плейлиста", color = ColorSecondary, fontSize = 14.sp) },
+                    placeholder = { Text("Название плейлиста", color = LocalAppColors.current.secondary, fontSize = 14.sp) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = GradientStart,
                         unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
-                        focusedTextColor = ColorOnBackground,
-                        unfocusedTextColor = ColorOnBackground,
+                        focusedTextColor = LocalAppColors.current.onBackground,
+                        unfocusedTextColor = LocalAppColors.current.onBackground,
                         cursorColor = GradientStart
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -305,19 +302,19 @@ private fun AddToPlaylistSheet(
                         Icon(
                             Icons.Default.AutoAwesome,
                             null,
-                            tint = if (autoFill) GradientStart else ColorSecondary,
+                            tint = if (autoFill) GradientStart else LocalAppColors.current.secondary,
                             modifier = Modifier.size(18.dp)
                         )
                         Column {
                             Text(
                                 "Добавить похожие треки",
-                                color = ColorOnBackground,
+                                color = LocalAppColors.current.onBackground,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
                                 "Автоматически найдём треки по артисту и жанру",
-                                color = ColorSecondary,
+                                color = LocalAppColors.current.secondary,
                                 fontSize = 11.sp
                             )
                         }
@@ -328,8 +325,8 @@ private fun AddToPlaylistSheet(
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = GradientStart,
-                            uncheckedThumbColor = ColorSecondary,
-                            uncheckedTrackColor = ColorSurface
+                            uncheckedThumbColor = LocalAppColors.current.secondary,
+                            uncheckedTrackColor = LocalAppColors.current.surface
                         )
                     )
                 }
@@ -382,7 +379,7 @@ private fun AddToPlaylistSheet(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
                 .background(
-                    if (showCreateForm) GradientStart.copy(alpha = 0.1f) else ColorSurface,
+                    if (showCreateForm) GradientStart.copy(alpha = 0.1f) else LocalAppColors.current.surface,
                     RoundedCornerShape(14.dp)
                 )
                 .border(
@@ -409,13 +406,13 @@ private fun AddToPlaylistSheet(
             ) {
                 Icon(
                     Icons.Default.Add, null,
-                    tint = if (showCreateForm) GradientStart else ColorOnBackground,
+                    tint = if (showCreateForm) GradientStart else LocalAppColors.current.onBackground,
                     modifier = Modifier.size(20.dp)
                 )
             }
             Text(
                 "Создать новый плейлист",
-                color = if (showCreateForm) GradientStart else ColorOnBackground,
+                color = if (showCreateForm) GradientStart else LocalAppColors.current.onBackground,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -442,14 +439,14 @@ private fun AddToPlaylistSheet(
             ) {
                 Text(
                     "У вас пока нет плейлистов",
-                    color = ColorSecondary,
+                    color = LocalAppColors.current.secondary,
                     fontSize = 14.sp
                 )
             }
         } else {
             Text(
                 "Мои плейлисты",
-                color = ColorSecondary,
+                color = LocalAppColors.current.secondary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 20.dp)
             )
@@ -484,7 +481,7 @@ private fun PlaylistPickerItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
-            .background(ColorSurface, RoundedCornerShape(12.dp))
+            .background(LocalAppColors.current.surface, RoundedCornerShape(12.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -512,7 +509,7 @@ private fun PlaylistPickerItem(
             } else {
                 Icon(
                     Icons.Default.PlaylistAdd, null,
-                    tint = ColorSecondary,
+                    tint = LocalAppColors.current.secondary,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -521,7 +518,7 @@ private fun PlaylistPickerItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 playlist.name,
-                color = ColorOnBackground,
+                color = LocalAppColors.current.onBackground,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -536,7 +533,7 @@ private fun PlaylistPickerItem(
                         else -> "треков"
                     }
                 }",
-                color = ColorSecondary,
+                color = LocalAppColors.current.secondary,
                 fontSize = 12.sp
             )
         }

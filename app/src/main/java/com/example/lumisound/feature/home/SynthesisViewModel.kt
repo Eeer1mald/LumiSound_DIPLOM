@@ -140,30 +140,59 @@ class SynthesisViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isBuildingPlaylist = true, error = null)
             try {
-                // Берём топ-треки текущего пользователя
-                val myTracks = authRepository.getFavoriteTracks(token, limit = 20, orderByPlayCount = true)
-                    .getOrDefault(emptyList())
+                // Собираем треки от ВСЕХ участников с атрибуцией
+                data class TaggedTrack(
+                    val trackId: String,
+                    val trackTitle: String,
+                    val trackArtist: String,
+                    val trackCoverUrl: String?,
+                    val trackPreviewUrl: String?,
+                    val addedByUsername: String?,
+                    val addedByAvatar: String?
+                )
 
-                if (myTracks.isEmpty()) {
+                val allTaggedTracks = mutableListOf<TaggedTrack>()
+
+                for (participant in participants) {
+                    val userId = participant.userId ?: continue
+                    val tracks = authRepository.getFavoriteTracksForUser(token, userId, limit = 25)
+                        .getOrDefault(emptyList())
+                    for (t in tracks) {
+                        allTaggedTracks.add(
+                            TaggedTrack(
+                                trackId = t.trackId,
+                                trackTitle = t.trackTitle,
+                                trackArtist = t.trackArtist,
+                                trackCoverUrl = t.trackCoverUrl,
+                                trackPreviewUrl = t.trackPreviewUrl,
+                                addedByUsername = participant.username,
+                                addedByAvatar = participant.avatarUrl
+                            )
+                        )
+                    }
+                }
+
+                if (allTaggedTracks.isEmpty()) {
                     _state.value = _state.value.copy(
                         isBuildingPlaylist = false,
-                        error = "У вас нет прослушанных треков для синтеза. Послушайте музыку сначала!"
+                        error = "У участников нет прослушанных треков. Послушайте музыку сначала!"
                     )
                     return@launch
                 }
 
-                // Перемешиваем треки
-                val shuffled = myTracks.shuffled()
+                // Перемешиваем, чтобы треки разных участников чередовались
+                val shuffled = allTaggedTracks.shuffled()
+                // Убираем дубликаты по trackId, оставляем первое вхождение
+                val seen = mutableSetOf<String>()
+                val unique = shuffled.filter { seen.add(it.trackId) }
 
-                // Создаём название из участников
-                val names = participants.mapNotNull { it.username }.joinToString(" x ")
-                val playlistName = if (names.isNotBlank()) names else "Синтез"
+                // Название из участников
+                val names = participants.mapNotNull { it.username }.joinToString(" × ")
+                val playlistName = if (names.isNotBlank()) "Синтез: $names" else "Синтез"
 
                 authRepository.createPlaylist(token, playlistName, "Синтез ${participants.size} участников", true)
                     .onSuccess { playlist ->
-                        // Добавляем треки с указанием автора
-                        val myUsername = participants.firstOrNull { it.userId == sessionManager.getUserId() }?.username
-                        shuffled.take(50).forEachIndexed { index, track ->
+                        unique.take(60).forEachIndexed { index, track ->
                             authRepository.addTrackToPlaylist(
                                 token,
                                 SupabaseService.PlaylistTrackInsert(
@@ -174,8 +203,8 @@ class SynthesisViewModel @Inject constructor(
                                     trackCoverUrl = track.trackCoverUrl,
                                     trackPreviewUrl = track.trackPreviewUrl,
                                     position = index,
-                                    addedByUsername = myUsername,
-                                    addedByAvatar = participants.firstOrNull { it.userId == sessionManager.getUserId() }?.avatarUrl
+                                    addedByUsername = track.addedByUsername,
+                                    addedByAvatar = track.addedByAvatar
                                 )
                             )
                         }

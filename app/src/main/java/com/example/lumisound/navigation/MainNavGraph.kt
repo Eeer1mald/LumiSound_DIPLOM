@@ -1,4 +1,4 @@
-package com.example.lumisound.navigation
+﻿package com.example.lumisound.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
@@ -18,12 +18,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.example.lumisound.ui.theme.ColorBackground
+import com.example.lumisound.ui.theme.LocalAppColors
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -50,6 +55,7 @@ import com.example.lumisound.feature.artist.ArtistCardScreen
 import com.example.lumisound.feature.settings.SettingsScreen
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.launch
 
 /**
  * Навигационные маршруты основного приложения.
@@ -71,11 +77,19 @@ sealed class MainDestination(val route: String) {
             return "public_profile/$userId/$encodedUser/$encodedAvatar"
         }
     }
-    data class Review(val trackId: String = "{trackId}") : MainDestination("review/{trackId}") {
-        fun createRoute(trackId: String) = "review/$trackId"
+    data class Review(val trackId: String = "{trackId}") : MainDestination("review/{trackId}/{trackTitle}/{trackArtist}") {
+        fun createRoute(trackId: String, trackTitle: String = "", trackArtist: String = ""): String {
+            val encodedTitle = URLEncoder.encode(trackTitle.ifBlank { "—" }, StandardCharsets.UTF_8.toString())
+            val encodedArtist = URLEncoder.encode(trackArtist.ifBlank { "—" }, StandardCharsets.UTF_8.toString())
+            return "review/$trackId/$encodedTitle/$encodedArtist"
+        }
     }
-    data class Reviews(val trackId: String = "{trackId}") : MainDestination("reviews/{trackId}") {
-        fun createRoute(trackId: String) = "reviews/$trackId"
+    data class Reviews(val trackId: String = "{trackId}") : MainDestination("reviews/{trackId}/{trackTitle}/{trackArtist}") {
+        fun createRoute(trackId: String, trackTitle: String = "", trackArtist: String = ""): String {
+            val encodedTitle = URLEncoder.encode(trackTitle.ifBlank { "—" }, StandardCharsets.UTF_8.toString())
+            val encodedArtist = URLEncoder.encode(trackArtist.ifBlank { "—" }, StandardCharsets.UTF_8.toString())
+            return "reviews/$trackId/$encodedTitle/$encodedArtist"
+        }
     }
     data class NowPlaying(val trackId: String = "{trackId}") : MainDestination("now_playing/{trackId}") {
         fun createRoute(trackId: String) = "now_playing/$trackId"
@@ -172,7 +186,7 @@ fun MainNavGraph(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ColorBackground)
+            .background(LocalAppColors.current.background)
     ) {
         NavHost(
             navController = navController,
@@ -412,42 +426,65 @@ fun MainNavGraph(
 
         composable(
             route = MainDestination.Review().route,
-            arguments = listOf(navArgument("trackId") { type = NavType.StringType }),
+            arguments = listOf(
+                navArgument("trackId") { type = NavType.StringType },
+                navArgument("trackTitle") { type = NavType.StringType; defaultValue = "" },
+                navArgument("trackArtist") { type = NavType.StringType; defaultValue = "" }
+            ),
             enterTransition = { fadeIn(animationSpec = tween(250)) },
             exitTransition = { fadeOut(animationSpec = tween(200)) }
-        ) {
+        ) { backStackEntry ->
+            val trackId = backStackEntry.arguments?.getString("trackId") ?: ""
+            val trackTitle = backStackEntry.arguments?.getString("trackTitle")
+                ?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""
+            val trackArtist = backStackEntry.arguments?.getString("trackArtist")
+                ?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""
+
+            val reviewTrack by playerStateHolder.reviewTrack.collectAsState()
             val currentTrack by playerStateHolder.currentTrack.collectAsState()
-            val track = currentTrack
-            if (track != null) {
-                com.example.lumisound.feature.ratings.ReviewScreen(
-                    track = track,
-                    onClose = { navController.popBackStack() },
-                    onOpenReviews = {
-                        navController.navigate(MainDestination.Reviews().createRoute(track.id))
-                    },
-                    navController = navController
-                )
-            } else {
-                navController.popBackStack()
-            }
+            // Приоритет: reviewTrack с совпадающим ID → currentTrack с совпадающим ID → минимальный трек из параметров
+            val track = reviewTrack?.takeIf { it.id == trackId }
+                ?: currentTrack?.takeIf { it.id == trackId }
+                ?: Track(id = trackId, name = trackTitle, artist = trackArtist)
+
+            com.example.lumisound.feature.ratings.ReviewScreen(
+                track = track,
+                onClose = { navController.popBackStack() },
+                onOpenReviews = {
+                    navController.navigate(
+                        MainDestination.Reviews().createRoute(track.id, track.name, track.artist)
+                    )
+                },
+                navController = navController
+            )
         }
 
         composable(
             route = MainDestination.Reviews().route,
-            arguments = listOf(navArgument("trackId") { type = NavType.StringType }),
+            arguments = listOf(
+                navArgument("trackId") { type = NavType.StringType },
+                navArgument("trackTitle") { type = NavType.StringType; defaultValue = "" },
+                navArgument("trackArtist") { type = NavType.StringType; defaultValue = "" }
+            ),
             enterTransition = { fadeIn(animationSpec = tween(250)) },
             exitTransition = { fadeOut(animationSpec = tween(200)) }
-        ) {
+        ) { backStackEntry ->
+            val trackId = backStackEntry.arguments?.getString("trackId") ?: ""
+            val trackTitle = backStackEntry.arguments?.getString("trackTitle")
+                ?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""
+            val trackArtist = backStackEntry.arguments?.getString("trackArtist")
+                ?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""
+
+            val reviewTrack by playerStateHolder.reviewTrack.collectAsState()
             val currentTrack by playerStateHolder.currentTrack.collectAsState()
-            val track = currentTrack
-            if (track != null) {
-                com.example.lumisound.feature.ratings.ReviewsScreen(
-                    track = track,
-                    onClose = { navController.popBackStack() }
-                )
-            } else {
-                navController.popBackStack()
-            }
+            val track = reviewTrack?.takeIf { it.id == trackId }
+                ?: currentTrack?.takeIf { it.id == trackId }
+                ?: Track(id = trackId, name = trackTitle, artist = trackArtist)
+
+            com.example.lumisound.feature.ratings.ReviewsScreen(
+                track = track,
+                onClose = { navController.popBackStack() }
+            )
         }
         }
 
@@ -458,6 +495,23 @@ fun MainNavGraph(
         val isOnMainTabs = currentRoute == "home"
         val isOnReviewScreen = currentRoute?.startsWith("review") == true
         if (globalCurrentTrack != null && !isOnFullPlayer && !isOnMainTabs && !isOnReviewScreen) {
+            // Состояние свайпа вверх для открытия плеера
+            var globalMiniRawProgress by remember { mutableFloatStateOf(0f) }
+            var globalMiniIsDragging by remember { mutableStateOf(false) }
+            var globalMiniLastVelocity by remember { mutableFloatStateOf(0f) }
+            var globalMiniTargetProgress by remember { mutableFloatStateOf(0f) }
+            val globalMiniAnimatedProgress by animateFloatAsState(
+                targetValue = globalMiniTargetProgress,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+                label = "globalMiniAnim"
+            )
+            val globalMiniProgress = if (globalMiniIsDragging) globalMiniRawProgress else globalMiniAnimatedProgress
+            val globalMiniScope = rememberCoroutineScope()
+
+            // Соседние треки
+            val globalPlaylist by playerStateHolder.playlist.collectAsState()
+            val globalCurrentIdx by playerStateHolder.currentIndex.collectAsState()
+
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -466,16 +520,18 @@ fun MainNavGraph(
                 com.example.lumisound.feature.home.components.MiniPlayer(
                     currentTrack = globalCurrentTrack,
                     isPlaying = globalIsPlaying,
-                    progress = androidx.compose.runtime.derivedStateOf {
-                        val pos = globalPlayerViewModel.currentPosition.value
-                        val dur = globalPlayerViewModel.duration.value
+                    progress = run {
+                        val pos by globalPlayerViewModel.currentPosition.collectAsState()
+                        val dur by globalPlayerViewModel.duration.collectAsState()
                         if (dur > 0) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
-                    }.value,
+                    },
                     onPlayPauseClick = { globalPlayerViewModel.togglePlayPause() },
                     onTrackClick = {
-                        navController.navigate(
-                            MainDestination.NowPlaying().createRoute(globalCurrentTrack!!.id)
-                        ) { launchSingleTop = true }
+                        if (globalMiniProgress < 0.05f && !globalMiniIsDragging) {
+                            navController.navigate(
+                                MainDestination.NowPlaying().createRoute(globalCurrentTrack!!.id)
+                            ) { launchSingleTop = true }
+                        }
                     },
                     onAddClick = {},
                     onLikeClick = {},
@@ -483,6 +539,35 @@ fun MainNavGraph(
                         navController.navigate(
                             MainDestination.Artist().createRoute(artistId, artistName, artistImageUrl)
                         )
+                    },
+                    onNextTrack = { globalPlayerViewModel.nextTrack() },
+                    onPreviousTrack = { globalPlayerViewModel.previousTrack() },
+                    hasPrevious = globalPlayerViewModel.hasPrevious,
+                    nextTrackInfo = globalPlaylist.getOrNull(globalCurrentIdx + 1),
+                    prevTrackInfo = globalPlaylist.getOrNull(globalCurrentIdx - 1),
+                    avgScore = globalPlayerViewModel.avgScore.collectAsState().value,
+                    animationProgress = globalMiniProgress,
+                    onAnimationProgressChange = { globalMiniRawProgress = it.coerceIn(0f, 1f) },
+                    onDragStart = { globalMiniIsDragging = true; globalMiniLastVelocity = 0f },
+                    onDragVelocityChange = { globalMiniLastVelocity = it },
+                    onDragEnd = {
+                        val progress = globalMiniRawProgress
+                        val velocity = globalMiniLastVelocity
+                        globalMiniIsDragging = false
+                        val shouldOpen = progress >= 0.3f || velocity > 8f
+                        if (shouldOpen) {
+                            globalMiniRawProgress = 0f
+                            globalMiniTargetProgress = 0f
+                            navController.navigate(
+                                MainDestination.NowPlaying().createRoute(globalCurrentTrack!!.id)
+                            ) { launchSingleTop = true }
+                        } else {
+                            globalMiniTargetProgress = 0f
+                            globalMiniScope.launch {
+                                kotlinx.coroutines.delay(300)
+                                globalMiniRawProgress = 0f
+                            }
+                        }
                     },
                     modifier = Modifier.fillMaxWidth()
                 )

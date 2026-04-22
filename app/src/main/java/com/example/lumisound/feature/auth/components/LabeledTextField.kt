@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.auth.components
+﻿package com.example.lumisound.feature.auth.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -31,9 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lumisound.ui.theme.ColorAccentSecondary
 import com.example.lumisound.ui.theme.ColorError
-import com.example.lumisound.ui.theme.ColorOnSurface
-import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.LumiSoundTheme
+import com.example.lumisound.ui.theme.LocalAppColors
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 

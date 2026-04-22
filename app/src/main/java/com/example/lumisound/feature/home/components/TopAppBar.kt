@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.home.components
+﻿package com.example.lumisound.feature.home.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -31,10 +31,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lumisound.R
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun TopAppBar(
@@ -68,7 +67,7 @@ fun TopAppBar(
             } else {
                 Text(
                     text = stringResource(R.string.app_name),
-                    color = ColorOnBackground,
+                    color = LocalAppColors.current.onBackground,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )

@@ -1,6 +1,7 @@
-package com.example.lumisound.feature.artist
+﻿package com.example.lumisound.feature.artist
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,7 +38,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,12 +57,9 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.lumisound.data.model.Track
 import com.example.lumisound.feature.nowplaying.PlayerViewModel
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 private fun formatCount(count: Int?): String {
     if (count == null) return "—"
@@ -87,6 +89,23 @@ fun ArtistCardScreen(
         }
     }
 
+    var showAllTracks by remember { mutableStateOf(false) }
+
+    // Экран всех треков
+    if (showAllTracks) {
+        ArtistAllTracksScreen(
+            artistName = artistName,
+            tracks = state.allTracks,
+            onClose = { showAllTracks = false },
+            onTrackClick = { track ->
+                val idx = state.allTracks.indexOf(track)
+                playerViewModel.playPlaylist(state.allTracks, idx.coerceAtLeast(0))
+                onTrackClick?.invoke(track)
+            }
+        )
+        return
+    }
+
     val artist = state.artist
     val avatarUrl = state.avatarUrl ?: artistImageUrl
     val coverUrl = state.coverUrl
@@ -94,7 +113,7 @@ fun ArtistCardScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ColorBackground)
+            .background(LocalAppColors.current.background)
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -134,7 +153,7 @@ fun ArtistCardScreen(
                                 .fillMaxSize()
                                 .background(
                                     Brush.verticalGradient(
-                                        listOf(Color(0xFF1A1A2E), ColorBackground)
+                                        listOf(Color(0xFF1A1A2E), LocalAppColors.current.background)
                                     )
                                 )
                         )
@@ -149,8 +168,8 @@ fun ArtistCardScreen(
                                     colors = listOf(
                                         Color.Transparent,
                                         Color.Transparent,
-                                        ColorBackground.copy(alpha = 0.6f),
-                                        ColorBackground
+                                        LocalAppColors.current.background.copy(alpha = 0.6f),
+                                        LocalAppColors.current.background
                                     )
                                 )
                             )
@@ -229,7 +248,7 @@ fun ArtistCardScreen(
                         modifier = Modifier
                             .size(80.dp)
                             .clip(CircleShape)
-                            .background(ColorSurface)
+                            .background(LocalAppColors.current.surface)
                     ) {
                         if (!avatarUrl.isNullOrEmpty()) {
                             AsyncImage(
@@ -244,7 +263,7 @@ fun ArtistCardScreen(
                             )
                         } else {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(40.dp))
+                                Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(40.dp))
                             }
                         }
                     }
@@ -281,7 +300,11 @@ fun ArtistCardScreen(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
                             ) {
-                                state.tracks.firstOrNull()?.let { playerViewModel.playTrack(it) }
+                                if (state.allTracks.isNotEmpty()) {
+                                    playerViewModel.playPlaylist(state.allTracks, 0)
+                                } else {
+                                    state.tracks.firstOrNull()?.let { playerViewModel.playPlaylist(state.tracks, 0) }
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -305,14 +328,14 @@ fun ArtistCardScreen(
                     ) {
                         Text(
                             text = "О себе",
-                            color = ColorOnBackground,
+                            color = LocalAppColors.current.onBackground,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
                         Text(
                             text = artist!!.bio!!,
-                            color = ColorSecondary,
+                            color = LocalAppColors.current.secondary,
                             fontSize = 14.sp,
                             lineHeight = 20.sp
                         )
@@ -320,11 +343,11 @@ fun ArtistCardScreen(
                 }
             }
 
-            // ── Треки ────────────────────────────────────────────────
+            // ── Популярные треки (топ-5) ─────────────────────────────
             item {
                 Text(
                     text = "Популярные треки",
-                    color = ColorOnBackground,
+                    color = LocalAppColors.current.onBackground,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
@@ -334,9 +357,7 @@ fun ArtistCardScreen(
             if (state.isLoading) {
                 item {
                     Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
+                        modifier = Modifier.fillMaxWidth().padding(32.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(32.dp))
@@ -346,7 +367,7 @@ fun ArtistCardScreen(
                 item {
                     Text(
                         text = if (artistId.isNullOrBlank()) "Нет данных об артисте" else "Треки не найдены",
-                        color = ColorSecondary,
+                        color = LocalAppColors.current.secondary,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
                     )
@@ -361,9 +382,68 @@ fun ArtistCardScreen(
                         index = index + 1,
                         track = track,
                         onClick = {
-                            onTrackClick?.invoke(track) ?: playerViewModel.playTrack(track)
+                            playerViewModel.playPlaylist(state.tracks, index)
+                            onTrackClick?.invoke(track)
                         }
                     )
+                }
+            }
+
+            // ── Все треки — горизонтальный скролл карточек ───────────
+            if (state.allTracks.size > 5) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                            .padding(top = 20.dp, bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Все треки",
+                            color = LocalAppColors.current.onBackground,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        // Кнопка See All
+                        Box(
+                            modifier = Modifier
+                                .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { showAllTracks = true }
+                                .padding(horizontal = 16.dp, vertical = 7.dp)
+                        ) {
+                            Text(
+                                "See All",
+                                color = LocalAppColors.current.onBackground,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(state.allTracks, key = { it.id }) { track ->
+                            ArtistTrackCard(
+                                track = track,
+                                onClick = {
+                                    val idx = state.allTracks.indexOf(track)
+                                    playerViewModel.playPlaylist(state.allTracks, idx.coerceAtLeast(0))
+                                    onTrackClick?.invoke(track)
+                                }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
 
@@ -377,13 +457,13 @@ private fun StatItem(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = value,
-            color = ColorOnBackground,
+            color = LocalAppColors.current.onBackground,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold
         )
         Text(
             text = label,
-            color = ColorSecondary,
+            color = LocalAppColors.current.secondary,
             fontSize = 11.sp
         )
     }
@@ -409,7 +489,7 @@ private fun ArtistTrackItem(
         // Номер
         Text(
             text = index.toString(),
-            color = ColorSecondary,
+            color = LocalAppColors.current.secondary,
             fontSize = 14.sp,
             modifier = Modifier.width(20.dp)
         )
@@ -419,7 +499,7 @@ private fun ArtistTrackItem(
             modifier = Modifier
                 .size(48.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(ColorSurface)
+                .background(LocalAppColors.current.surface)
         ) {
             if (!track.imageUrl.isNullOrEmpty()) {
                 AsyncImage(
@@ -433,7 +513,7 @@ private fun ArtistTrackItem(
                     contentScale = ContentScale.Crop
                 )
             } else {
-                Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(20.dp).align(Alignment.Center))
+                Icon(Icons.Default.MusicNote, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(20.dp).align(Alignment.Center))
             }
         }
 
@@ -441,7 +521,7 @@ private fun ArtistTrackItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = track.name,
-                color = ColorOnBackground,
+                color = LocalAppColors.current.onBackground,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -450,12 +530,158 @@ private fun ArtistTrackItem(
             if (!track.genre.isNullOrEmpty()) {
                 Text(
                     text = track.genre,
-                    color = ColorSecondary,
+                    color = LocalAppColors.current.secondary,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+    }
+}
+
+// ── Карточка трека для горизонтального скролла ───────────────────────────────
+@Composable
+private fun ArtistTrackCard(
+    track: Track,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(120.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onClick() },
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(120.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(LocalAppColors.current.surface),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!track.imageUrl.isNullOrEmpty()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(track.imageUrl)
+                        .crossfade(false)
+                        .memoryCacheKey(track.imageUrl)
+                        .build(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    Icons.Default.MusicNote, null,
+                    tint = LocalAppColors.current.secondary.copy(alpha = 0.5f),
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+            // Кнопка play поверх обложки
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .size(28.dp)
+                    .background(
+                        brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.PlayArrow, null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+        Text(
+            text = track.name,
+            color = LocalAppColors.current.onBackground,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+// ── Экран всех треков артиста ─────────────────────────────────────────────────
+@Composable
+fun ArtistAllTracksScreen(
+    artistName: String,
+    tracks: List<Track>,
+    onClose: () -> Unit,
+    onTrackClick: (Track) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LocalAppColors.current.background)
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 32.dp)
+        ) {
+            // Хедер
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .size(40.dp)
+                            .background(Color.White.copy(alpha = 0.08f), CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onClose() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowDown, "Назад",
+                            tint = LocalAppColors.current.onBackground,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "Все треки",
+                            color = LocalAppColors.current.onBackground,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            artistName,
+                            color = LocalAppColors.current.secondary,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+
+            // Список треков
+            itemsIndexed(
+                items = tracks,
+                key = { _, t -> t.id },
+                contentType = { _, _ -> "track" }
+            ) { index, track ->
+                ArtistTrackItem(
+                    index = index + 1,
+                    track = track,
+                    onClick = { onTrackClick(track) }
+                )
+            }
+
+            item { Spacer(modifier = Modifier.navigationBarsPadding()) }
         }
     }
 }

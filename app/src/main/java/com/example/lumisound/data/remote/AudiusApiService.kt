@@ -70,6 +70,20 @@ data class AudiusSearchResponse(
     val data: List<AudiusTrack>? = null
 )
 
+@Serializable
+data class AudiusPlaylist(
+    val id: String,
+    @SerialName("playlist_name") val playlistName: String? = null,
+    @SerialName("artwork") val artwork: JsonObject? = null,
+    @SerialName("track_count") val trackCount: Int? = null,
+    @SerialName("user") val user: AudiusArtist? = null
+)
+
+@Serializable
+data class AudiusPlaylistSearchResponse(
+    val data: List<AudiusPlaylist>? = null
+)
+
 @Singleton
 class AudiusApiService @Inject constructor(
     private val httpClient: HttpClient
@@ -202,9 +216,23 @@ class AudiusApiService @Inject constructor(
         return "$currentHost/v1/tracks/$trackId/stream"
     }
 
-    // Получить трек по ID
-    suspend fun getTrackById(trackId: String): Result<AudiusTrack> {
+    suspend fun searchPlaylists(query: String, limit: Int = 6): Result<List<AudiusPlaylist>> {
         return runCatching {
+            makeRequestWithFallback("/v1/playlists/search") { baseUrl ->
+                val response = httpClient.get {
+                    url(baseUrl)
+                    parameter("query", query)
+                    parameter("limit", limit)
+                    parameter("app_name", APP_NAME)
+                }.body<String>()
+                val parsed = json.decodeFromString(AudiusPlaylistSearchResponse.serializer(), response)
+                parsed.data ?: emptyList()
+            }
+        }
+    }
+
+    // Получить трек по ID
+    suspend fun getTrackById(trackId: String): Result<AudiusTrack> {        return runCatching {
             makeRequestWithFallback("/v1/tracks/$trackId") { baseUrl ->
                 val response = httpClient.get {
                     url(baseUrl)

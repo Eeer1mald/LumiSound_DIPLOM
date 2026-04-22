@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.auth.register
+﻿package com.example.lumisound.feature.auth.register
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.LaunchedEffect
@@ -51,8 +51,7 @@ import com.example.lumisound.R
 import com.example.lumisound.feature.auth.components.GradientButton
 import com.example.lumisound.feature.auth.components.LabeledTextField
 import com.example.lumisound.ui.theme.ColorAccentSecondary
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun RegisterScreen(
@@ -99,7 +98,7 @@ fun RegisterScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(ColorBackground)
+                .background(LocalAppColors.current.background)
         ) {
             
             Column(

@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.ratings
+﻿package com.example.lumisound.feature.ratings
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -58,12 +58,9 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.lumisound.data.remote.SupabaseService
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -89,7 +86,7 @@ fun RatingsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ColorBackground)
+            .background(LocalAppColors.current.background)
             .statusBarsPadding()
     ) {
         val gradientBrush = remember {
@@ -196,7 +193,7 @@ fun RatingsScreen(
                                 .height(44.dp)
                                 .background(
                                     if (active) Brush.linearGradient(listOf(GradientStart, GradientEnd))
-                                    else Brush.linearGradient(listOf(ColorSurface.copy(alpha = 0.4f), ColorSurface.copy(alpha = 0.4f))),
+                                    else Brush.linearGradient(listOf(LocalAppColors.current.surface.copy(alpha = 0.4f), LocalAppColors.current.surface.copy(alpha = 0.4f))),
                                     RoundedCornerShape(14.dp)
                                 )
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
@@ -206,7 +203,7 @@ fun RatingsScreen(
                         ) {
                             Text(
                                 tab.label,
-                                color = if (active) Color.White else ColorSecondary,
+                                color = if (active) Color.White else LocalAppColors.current.secondary,
                                 fontSize = 13.sp,
                                 fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal
                             )
@@ -266,7 +263,7 @@ private fun ReviewCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 6.dp)
-            .background(ColorSurface.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+            .background(LocalAppColors.current.surface.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { expanded = !expanded }
             .padding(16.dp)
     ) {
@@ -281,7 +278,7 @@ private fun ReviewCard(
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(ColorSurface)
+                    .background(LocalAppColors.current.surface)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                         if (rating.userId.isNotBlank()) {
                             navController?.navigate(
@@ -298,12 +295,12 @@ private fun ReviewCard(
                         contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
                     )
                 } else {
-                    Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(14.dp))
                 }
             }
-            Text(displayName, color = ColorSecondary, fontSize = 12.sp)
+            Text(displayName, color = LocalAppColors.current.secondary, fontSize = 12.sp)
             Spacer(modifier = Modifier.weight(1f))
-            Text(dateStr, color = ColorSecondary, fontSize = 11.sp)
+            Text(dateStr, color = LocalAppColors.current.secondary, fontSize = 11.sp)
         }
 
         // Трек + оценка
@@ -312,19 +309,19 @@ private fun ReviewCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(ColorSurface)) {
+            Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(LocalAppColors.current.surface)) {
                 if (!rating.trackCoverUrl.isNullOrEmpty()) {
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current).data(rating.trackCoverUrl).crossfade(false).build(),
                         contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
                     )
                 } else {
-                    Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(24.dp).align(Alignment.Center))
+                    Icon(Icons.Default.MusicNote, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(24.dp).align(Alignment.Center))
                 }
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text(rating.trackTitle, color = ColorOnBackground, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(rating.trackArtist, color = ColorSecondary, fontSize = 12.sp, maxLines = 1)
+                Text(rating.trackTitle, color = LocalAppColors.current.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(rating.trackArtist, color = LocalAppColors.current.secondary, fontSize = 12.sp, maxLines = 1)
                 Spacer(modifier = Modifier.height(6.dp))
                 rating.overallScore?.let { score ->
                     Row(
@@ -342,7 +339,7 @@ private fun ReviewCard(
             }
             Icon(
                 if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                null, tint = ColorSecondary, modifier = Modifier.size(20.dp)
+                null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(20.dp)
             )
         }
 
@@ -351,7 +348,7 @@ private fun ReviewCard(
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 review,
-                color = ColorOnBackground.copy(alpha = 0.9f),
+                color = LocalAppColors.current.onBackground.copy(alpha = 0.9f),
                 fontSize = 14.sp,
                 lineHeight = 21.sp,
                 maxLines = if (expanded) Int.MAX_VALUE else 3,
@@ -369,7 +366,7 @@ private fun ReviewCard(
             val repColor = when {
                 rating.reputation > 0 -> Color(0xFF2ECC71)
                 rating.reputation < 0 -> Color(0xFFE74C3C)
-                else -> ColorSecondary
+                else -> LocalAppColors.current.secondary
             }
             if (rating.reputation != 0) {
                 Text(
@@ -401,7 +398,7 @@ private fun ReviewCard(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(label, color = ColorSecondary, fontSize = 11.sp, modifier = Modifier.width(130.dp))
+                            Text(label, color = LocalAppColors.current.secondary, fontSize = 11.sp, modifier = Modifier.width(130.dp))
                             Box(modifier = Modifier.weight(1f).height(4.dp).background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(2.dp))) {
                                 Box(modifier = Modifier.fillMaxWidth(score / 10f).height(4.dp).background(GradientStart, RoundedCornerShape(2.dp)))
                             }
@@ -422,7 +419,7 @@ private fun EmptyState(title: String, subtitle: String) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text("📝", fontSize = 36.sp)
-        Text(title, color = ColorOnBackground.copy(alpha = 0.7f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-        Text(subtitle, color = ColorSecondary, fontSize = 13.sp, textAlign = TextAlign.Center)
+        Text(title, color = LocalAppColors.current.onBackground.copy(alpha = 0.7f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Text(subtitle, color = LocalAppColors.current.secondary, fontSize = 13.sp, textAlign = TextAlign.Center)
     }
 }

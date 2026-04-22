@@ -13,8 +13,10 @@ import javax.inject.Inject
 
 data class ArtistProfileState(
     val isLoading: Boolean = false,
+    val isLoadingAllTracks: Boolean = false,
     val artist: AudiusArtistFull? = null,
-    val tracks: List<Track> = emptyList(),
+    val tracks: List<Track> = emptyList(),       // топ-5 для главного экрана
+    val allTracks: List<Track> = emptyList(),     // все треки для отдельного экрана
     val avatarUrl: String? = null,
     val coverUrl: String? = null,
     val error: String? = null
@@ -64,9 +66,9 @@ class ArtistProfileViewModel @Inject constructor(
                 audiusApi.getCoverPhotoUrl(it.coverPhoto)
             }
 
-            // Загружаем треки артиста
-            val tracksResult = audiusApi.getArtistTracks(resolvedId, limit = 10)
-            val tracks = tracksResult.getOrNull()?.map { t ->
+            // Загружаем треки артиста — сразу 50 для "Все треки"
+            val tracksResult = audiusApi.getArtistTracks(resolvedId, limit = 50)
+            val allTracks = tracksResult.getOrNull()?.map { t ->
                 val artworkUrl = audiusApi.getArtworkUrl(t.artwork, "480x480")
                 val hdUrl = audiusApi.getArtworkUrl(t.artwork, "1000x1000")
                 Track(
@@ -85,7 +87,8 @@ class ArtistProfileViewModel @Inject constructor(
             _state.value = ArtistProfileState(
                 isLoading = false,
                 artist = artist,
-                tracks = tracks,
+                tracks = allTracks.take(5),   // топ-5 для главного экрана
+                allTracks = allTracks,
                 avatarUrl = avatarUrl,
                 coverUrl = coverUrl,
                 error = if (artist == null) "Не удалось загрузить профиль" else null

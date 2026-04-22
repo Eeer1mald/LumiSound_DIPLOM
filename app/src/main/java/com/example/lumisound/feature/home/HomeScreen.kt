@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.home
+﻿package com.example.lumisound.feature.home
 
 import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
@@ -43,6 +43,7 @@ import coil.request.ImageRequest
 import com.example.lumisound.data.remote.SupabaseService
 import com.example.lumisound.feature.nowplaying.PlayerViewModel
 import com.example.lumisound.ui.theme.*
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun HomeScreen(
@@ -51,7 +52,6 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel(),
     playlistViewModel: PlaylistViewModel = hiltViewModel(),
-    synthesisInviteCode: String? = null,
     creatorAvatarUrl: String? = null
 ) {
     val state by playlistViewModel.state.collectAsState()
@@ -59,10 +59,6 @@ fun HomeScreen(
     var showAllPlaylists by remember { mutableStateOf(false) }
     var selectedPlaylist by remember { mutableStateOf<SupabaseService.PlaylistResponse?>(null) }
     var showSynthesis by remember { mutableStateOf(false) }
-    var showSynthesisJoin by remember { mutableStateOf(synthesisInviteCode != null) }
-    val joinCode by remember { mutableStateOf(synthesisInviteCode) }
-    var manualJoinCode by remember { mutableStateOf("") }
-    var showManualJoin by remember { mutableStateOf(false) }
 
     // Для рандомного трека — меняется при каждом нажатии
     var randomSeed by remember { mutableStateOf(0) }
@@ -79,7 +75,7 @@ fun HomeScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(ColorBackground)) {
+    Box(modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background)) {
         val listState = rememberLazyListState()
         LazyColumn(
             modifier = Modifier.fillMaxSize().statusBarsPadding(),
@@ -93,7 +89,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("LumiSound", color = ColorOnBackground, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("LumiSound", color = LocalAppColors.current.onBackground, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         // Рандомный трек
                         Box(
@@ -113,7 +109,7 @@ fun HomeScreen(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Shuffle, "Случайный трек", tint = ColorSecondary, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Shuffle, "Случайный трек", tint = LocalAppColors.current.secondary, modifier = Modifier.size(18.dp))
                         }
                         // Создать
                         Box(
@@ -227,52 +223,18 @@ fun HomeScreen(
                 playlistViewModel = playlistViewModel
             )
         }
-
-        // Экран присоединения к синтезу (по deep link)
-        if (showSynthesisJoin && joinCode != null) {
-            AnimatedVisibility(
-                visible = true,
-                enter = slideInVertically { it },
-                modifier = Modifier.fillMaxSize()
-            ) {
-                SynthesisJoinScreen(
-                    inviteCode = joinCode!!,
-                    currentUsername = userName,
-                    currentAvatarUrl = creatorAvatarUrl,
-                    onClose = { showSynthesisJoin = false },
-                    onJoined = { showSynthesisJoin = false }
-                )
-            }
-        }
-
-        // Экран присоединения по ручному вводу кода
-        if (showManualJoin && manualJoinCode.isNotBlank()) {
-            AnimatedVisibility(
-                visible = true,
-                enter = slideInVertically { it },
-                modifier = Modifier.fillMaxSize()
-            ) {
-                SynthesisJoinScreen(
-                    inviteCode = manualJoinCode,
-                    currentUsername = userName,
-                    currentAvatarUrl = creatorAvatarUrl,
-                    onClose = { showManualJoin = false; manualJoinCode = "" },
-                    onJoined = { showManualJoin = false; manualJoinCode = "" }
-                )
-            }
-        }
     }
 
     if (showCreateMenu) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showCreateMenu = false },
-            title = { Text("Создать", color = ColorOnBackground, fontWeight = FontWeight.Bold) },
+            title = { Text("Создать", color = LocalAppColors.current.onBackground, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     // Плейлист
                     Box(
                         modifier = Modifier.fillMaxWidth()
-                            .background(ColorSurface, RoundedCornerShape(12.dp))
+                            .background(LocalAppColors.current.surface, RoundedCornerShape(12.dp))
                             .border(1.dp, GradientStart.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                 showCreateMenu = false
@@ -285,15 +247,15 @@ fun HomeScreen(
                                 Icon(Icons.Default.QueueMusic, null, tint = GradientStart, modifier = Modifier.size(18.dp))
                             }
                             Column {
-                                Text("Плейлист", color = ColorOnBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Собери треки в коллекцию", color = ColorSecondary, fontSize = 12.sp)
+                                Text("Плейлист", color = LocalAppColors.current.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Собери треки в коллекцию", color = LocalAppColors.current.secondary, fontSize = 12.sp)
                             }
                         }
                     }
                     // Синтез (активный)
                     Box(
                         modifier = Modifier.fillMaxWidth()
-                            .background(ColorSurface, RoundedCornerShape(12.dp))
+                            .background(LocalAppColors.current.surface, RoundedCornerShape(12.dp))
                             .border(1.dp, Color(0xFF9B59B6).copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                 showCreateMenu = false
@@ -308,47 +270,9 @@ fun HomeScreen(
                                 Icon(Icons.Default.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(18.dp))
                             }
                             Column {
-                                Text("Создать синтез", color = ColorOnBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Смешай треки с друзьями", color = ColorSecondary, fontSize = 12.sp)
+                                Text("Создать синтез", color = LocalAppColors.current.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Смешай треки с друзьями", color = LocalAppColors.current.secondary, fontSize = 12.sp)
                             }
-                        }
-                    }
-                    // Войти в синтез по коду
-                    var codeInput by remember { mutableStateOf("") }
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .background(ColorSurface, RoundedCornerShape(12.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = codeInput,
-                            onValueChange = { codeInput = it.uppercase().take(10) },
-                            textStyle = androidx.compose.ui.text.TextStyle(color = ColorOnBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                            decorationBox = { inner ->
-                                Box(contentAlignment = Alignment.CenterStart) {
-                                    if (codeInput.isEmpty()) Text("Введи код синтеза", color = ColorSecondary, fontSize = 13.sp)
-                                    inner()
-                                }
-                            }
-                        )
-                        Box(
-                            modifier = Modifier.size(36.dp)
-                                .background(if (codeInput.isNotBlank()) GradientStart else Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
-                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                    if (codeInput.isNotBlank()) {
-                                        manualJoinCode = codeInput
-                                        showCreateMenu = false
-                                        showManualJoin = true
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.ArrowForward, null, tint = Color.White, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -356,11 +280,11 @@ fun HomeScreen(
             confirmButton = {},
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { showCreateMenu = false }) {
-                    Text("Отмена", color = ColorSecondary)
+                    Text("Отмена", color = LocalAppColors.current.secondary)
                 }
             },
-            containerColor = com.example.lumisound.ui.theme.ColorBackground,
-            titleContentColor = ColorOnBackground
+            containerColor = com.example.lumisound.ui.theme.LocalAppColors.current.background,
+            titleContentColor = LocalAppColors.current.onBackground
         )
     }
 }
@@ -376,7 +300,7 @@ fun PlaylistTabSelector(selected: PlaylistTab, onSelect: (PlaylistTab) -> Unit) 
             val isActive = selected == tab
             Box(
                 modifier = Modifier.weight(1f).height(44.dp)
-                    .background(if (isActive) GradientStart.copy(alpha = 0.18f) else ColorSurface, RoundedCornerShape(12.dp))
+                    .background(if (isActive) GradientStart.copy(alpha = 0.18f) else LocalAppColors.current.surface, RoundedCornerShape(12.dp))
                     .border(1.dp, if (isActive) GradientStart.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.07f), RoundedCornerShape(12.dp))
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect(tab) },
                 contentAlignment = Alignment.Center
@@ -387,7 +311,7 @@ fun PlaylistTabSelector(selected: PlaylistTab, onSelect: (PlaylistTab) -> Unit) 
                         PlaylistTab.RECOMMENDED -> "Для вас"
                         PlaylistTab.TOP -> "Топ"
                     },
-                    color = if (isActive) GradientStart else ColorSecondary,
+                    color = if (isActive) GradientStart else LocalAppColors.current.secondary,
                     fontSize = 13.sp,
                     fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
                 )
@@ -419,12 +343,12 @@ private fun PlaylistTabContent(
     if (playlists.isEmpty()) {
         Box(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(110.dp)
-                .background(ColorSurface, RoundedCornerShape(16.dp))
+                .background(LocalAppColors.current.surface, RoundedCornerShape(16.dp))
                 .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
                 .then(if (isMyTab) Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onCreateClick() } else Modifier),
             contentAlignment = Alignment.Center
         ) {
-            Text(if (isMyTab) "Создать первый плейлист" else "Пока пусто", color = ColorSecondary, fontSize = 13.sp)
+            Text(if (isMyTab) "Создать первый плейлист" else "Пока пусто", color = LocalAppColors.current.secondary, fontSize = 13.sp)
         }
         return
     }
@@ -441,7 +365,7 @@ private fun PlaylistTabContent(
                     PlaylistTab.RECOMMENDED -> "Рекомендации"
                     PlaylistTab.TOP -> "Топ плейлисты"
                 },
-                color = ColorOnBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold
+                color = LocalAppColors.current.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold
             )
             if (playlists.size > 4 && isMyTab) {
                 Row(
@@ -488,7 +412,7 @@ private fun PlaylistCard(
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Box(modifier = Modifier.size(110.dp).clip(RoundedCornerShape(14.dp)).background(ColorSurface), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(110.dp).clip(RoundedCornerShape(14.dp)).background(LocalAppColors.current.surface), contentAlignment = Alignment.Center) {
             if (!playlist.coverUrl.isNullOrEmpty()) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current).data(playlist.coverUrl).crossfade(false).build(),
@@ -512,7 +436,7 @@ private fun PlaylistCard(
                 ) {
                     Icon(
                         if (playlist.isPublic) Icons.Default.Public else Icons.Default.Lock,
-                        null, tint = if (playlist.isPublic) GradientStart else ColorSecondary,
+                        null, tint = if (playlist.isPublic) GradientStart else LocalAppColors.current.secondary,
                         modifier = Modifier.size(12.dp)
                     )
                 }
@@ -533,13 +457,13 @@ private fun PlaylistCard(
                 }
             }
         }
-        Text(playlist.name, color = ColorOnBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(playlist.name, color = LocalAppColors.current.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("${playlist.trackCount} ${trackWord(playlist.trackCount)}", color = ColorSecondary, fontSize = 10.sp)
+            Text("${playlist.trackCount} ${trackWord(playlist.trackCount)}", color = LocalAppColors.current.secondary, fontSize = 10.sp)
             if (playlist.likesCount > 0) {
-                Text("·", color = ColorSecondary, fontSize = 10.sp)
+                Text("·", color = LocalAppColors.current.secondary, fontSize = 10.sp)
                 Icon(Icons.Default.Favorite, null, tint = GradientStart, modifier = Modifier.size(10.dp))
-                Text("${playlist.likesCount}", color = ColorSecondary, fontSize = 10.sp)
+                Text("${playlist.likesCount}", color = LocalAppColors.current.secondary, fontSize = 10.sp)
             }
         }
     }
@@ -551,37 +475,37 @@ private fun SmallTrackCard(track: SupabaseService.FavoriteTrackResponse, onClick
         modifier = Modifier.width(80.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        Box(modifier = Modifier.size(80.dp).clip(RoundedCornerShape(10.dp)).background(ColorSurface), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(80.dp).clip(RoundedCornerShape(10.dp)).background(LocalAppColors.current.surface), contentAlignment = Alignment.Center) {
             if (!track.trackCoverUrl.isNullOrEmpty()) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current).data(track.trackCoverUrl).crossfade(false).build(),
                     contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
                 )
             } else {
-                Icon(Icons.Default.MusicNote, null, tint = ColorSecondary.copy(alpha = 0.5f), modifier = Modifier.size(24.dp))
+                Icon(Icons.Default.MusicNote, null, tint = LocalAppColors.current.secondary.copy(alpha = 0.5f), modifier = Modifier.size(24.dp))
             }
         }
-        Text(track.trackTitle, color = ColorOnBackground, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(track.trackArtist, color = ColorSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(track.trackTitle, color = LocalAppColors.current.onBackground, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(track.trackArtist, color = LocalAppColors.current.secondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable
 private fun SectionHeader(title: String) {
-    Text(title, color = ColorOnBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 20.dp))
+    Text(title, color = LocalAppColors.current.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 20.dp))
 }
 
 @Composable
 private fun StatsSection(stats: HomeStats) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
-            .background(ColorSurface, RoundedCornerShape(16.dp))
+            .background(LocalAppColors.current.surface, RoundedCornerShape(16.dp))
             .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("За неделю", color = ColorOnBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text("За неделю", color = LocalAppColors.current.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatChip(icon = Icons.Default.Star, value = stats.ratingsThisWeek.toString(), label = "оценок", modifier = Modifier.weight(1f))
             StatChip(icon = Icons.Default.BarChart, value = stats.totalRatings.toString(), label = "всего оценок", modifier = Modifier.weight(1f))
@@ -593,15 +517,15 @@ private fun StatsSection(stats: HomeStats) {
 @Composable
 private fun StatChip(icon: androidx.compose.ui.graphics.vector.ImageVector, value: String, label: String, modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.background(ColorSurface, RoundedCornerShape(12.dp))
+        modifier = modifier.background(LocalAppColors.current.surface, RoundedCornerShape(12.dp))
             .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
             .padding(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Icon(icon, null, tint = GradientStart, modifier = Modifier.size(16.dp))
-        Text(value, color = ColorOnBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Text(label, color = ColorSecondary, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(value, color = LocalAppColors.current.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = LocalAppColors.current.secondary, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.auth.components
+﻿package com.example.lumisound.feature.auth.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,9 +24,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.lumisound.ui.theme.ColorBackground
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun OutlinedGradientButton(
@@ -60,7 +60,7 @@ fun OutlinedGradientButton(
                 .matchParentSize()
                 .padding(1.5.dp)
                 .clip(shape)
-                .background(ColorBackground),
+                .background(LocalAppColors.current.background),
             contentAlignment = Alignment.Center
         ) {
             Text(

@@ -7,6 +7,7 @@ import io.ktor.client.request.header
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.patch
+import io.ktor.client.request.put
 import io.ktor.client.request.delete
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
@@ -133,8 +134,30 @@ class SupabaseService @Inject constructor(
         }
     }
     
-    suspend fun getUser(accessToken: String): SupabaseUser? {
+    /** Обновляет access_token используя refresh_token */
+    suspend fun refreshToken(refreshToken: String): SupabaseTokenResponse? {
         return try {
+            val response = http.post {
+                url("$baseUrl/auth/v1/token?grant_type=refresh_token")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                contentType(ContentType.Application.Json)
+                setBody("""{"refresh_token":"$refreshToken"}""")
+            }
+            if (response.status.isSuccess()) {
+                val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+                json.decodeFromString(SupabaseTokenResponse.serializer(), response.bodyAsText())
+            } else {
+                Log.w("SupabaseService", "refreshToken failed: ${response.status}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("SupabaseService", "refreshToken error: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun getUser(accessToken: String): SupabaseUser? {        return try {
             val response = http.get {
                 url("$baseUrl/auth/v1/user")
                 header("apikey", anonKey)
@@ -187,6 +210,41 @@ class SupabaseService @Inject constructor(
         @SerialName("favorite_genre") val favoriteGenre: String? = null,
         @SerialName("avatar_url") val avatarUrl: String? = null
     )
+
+    /** Смена пароля через Supabase Auth API */
+    suspend fun changePassword(accessToken: String, newPassword: String): Result<Unit> {
+        return runCatching {
+            val response = http.put {
+                url("$baseUrl/auth/v1/user")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody("""{"password":"$newPassword"}""")
+            }
+            if (!response.status.isSuccess()) {
+                val text = response.bodyAsText()
+                throw IllegalStateException("Ошибка смены пароля: ${response.status}. $text")
+            }
+        }
+    }
+
+    /** Обновить поле is_public в профиле */
+    suspend fun updateProfileVisibility(accessToken: String, isPublic: Boolean): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            val response = http.patch {
+                url("$baseUrl/rest/v1/profiles?id=eq.$userId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody("""{"is_public":$isPublic}""")
+            }
+            if (!response.status.isSuccess()) {
+                val text = response.bodyAsText()
+                throw IllegalStateException("Ошибка обновления видимости: ${response.status}. $text")
+            }
+        }
+    }
 
     suspend fun upsertProfile(accessToken: String, userId: String?, username: String, email: String, bio: String? = null, favoriteGenre: String? = null, avatarUrl: String? = null) {
         // Получаем user ID из токена, если он не передан
@@ -468,6 +526,31 @@ class SupabaseService @Inject constructor(
         }
     }
     
+    /** Получить избранные треки любого пользователя по его userId (используется для синтеза) */
+    suspend fun getFavoriteTracksForUser(accessToken: String, userId: String, limit: Int = 30): List<FavoriteTrackResponse> {
+        return try {
+            val response = http.get {
+                url("$baseUrl/rest/v1/favorite_tracks")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                header("select", "*")
+                parameter("user_id", "eq.$userId")
+                parameter("order", "play_count.desc,added_at.desc")
+                parameter("limit", limit.toString())
+            }
+            if (response.status.isSuccess()) {
+                val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+                json.decodeFromString<List<FavoriteTrackResponse>>(response.bodyAsText())
+            } else {
+                Log.w("SupabaseService", "getFavoriteTracksForUser error: ${response.status}")
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e("SupabaseService", "getFavoriteTracksForUser error: ${e.message}")
+            emptyList()
+        }
+    }
+
     suspend fun addFavoriteTrack(accessToken: String, track: FavoriteTrackInsert): Result<Unit> {
         return runCatching {
             val response = http.post {
@@ -1345,6 +1428,28 @@ class SupabaseService @Inject constructor(
                 header("apikey", anonKey)
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
                 parameter("is_public", "eq.true")
+                parameter("order", "likes_count.desc,created_at.desc")
+                parameter("limit", limit.toString())
+            }
+            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    /**
+     * Поиск публичных плейлистов по запросу.
+     * Алгоритм: ищем по name (ilike) — нечувствительно к регистру, частичное совпадение.
+     * Сортировка: сначала точные совпадения (по likes_count), потом частичные.
+     */
+    suspend fun searchPublicPlaylists(query: String, limit: Int = 8): List<PlaylistResponse> {
+        if (query.isBlank()) return emptyList()
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/playlists")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                parameter("is_public", "eq.true")
+                parameter("name", "ilike.*${query.trim()}*")
                 parameter("order", "likes_count.desc,created_at.desc")
                 parameter("limit", limit.toString())
             }

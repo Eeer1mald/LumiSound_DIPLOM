@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.profile
+﻿package com.example.lumisound.feature.profile
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,11 +39,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun PublicProfileScreen(
@@ -57,7 +54,7 @@ fun PublicProfileScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ColorBackground)
+            .background(LocalAppColors.current.background)
             .statusBarsPadding()
     ) {
         Column(
@@ -85,14 +82,14 @@ fun PublicProfileScreen(
                     Icon(
                         Icons.Default.KeyboardArrowDown,
                         "Back",
-                        tint = ColorOnBackground,
+                        tint = LocalAppColors.current.onBackground,
                         modifier = Modifier.size(22.dp)
                     )
                 }
 
                 Text(
                     "Профиль",
-                    color = ColorSecondary,
+                    color = LocalAppColors.current.secondary,
                     fontSize = 14.sp,
                     modifier = Modifier.align(Alignment.Center)
                 )
@@ -137,7 +134,7 @@ fun PublicProfileScreen(
 
                 Text(
                     username,
-                    color = ColorOnBackground,
+                    color = LocalAppColors.current.onBackground,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -146,7 +143,7 @@ fun PublicProfileScreen(
 
                 Text(
                     "Пользователь LumiSound",
-                    color = ColorSecondary,
+                    color = LocalAppColors.current.secondary,
                     fontSize = 13.sp
                 )
             }
@@ -175,7 +172,7 @@ fun PublicProfileScreen(
                     Box(
                         modifier = Modifier
                             .size(56.dp)
-                            .background(ColorSurface, RoundedCornerShape(14.dp)),
+                            .background(LocalAppColors.current.surface, RoundedCornerShape(14.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -187,7 +184,7 @@ fun PublicProfileScreen(
                     }
                     Text(
                         "Публичные рецензии скоро появятся",
-                        color = ColorSecondary,
+                        color = LocalAppColors.current.secondary,
                         fontSize = 13.sp
                     )
                 }

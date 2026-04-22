@@ -27,10 +27,58 @@ class AuthRepositoryImpl @Inject constructor(
             sessionManager.saveAccessToken(tokenResponse.accessToken)
             sessionManager.saveEmail(email)
             tokenResponse.user?.id?.let { userId -> sessionManager.saveUserId(userId) }
+            // Сохраняем refresh token и время истечения
+            tokenResponse.refreshToken?.let { sessionManager.saveRefreshToken(it) }
+            tokenResponse.expiresIn?.let { expiresIn ->
+                sessionManager.saveTokenExpiry(System.currentTimeMillis() + expiresIn * 1000L)
+            }
             // Инвалидируем кэш при смене аккаунта
             invalidateCache()
             tokenResponse
         }
+    }
+
+    override suspend fun refreshTokenIfNeeded(): String? {
+        val currentToken = sessionManager.getAccessToken() ?: return null
+        val refreshToken = sessionManager.getRefreshToken()
+
+        // Если нет данных о времени истечения (старые пользователи) — проверяем токен реальным запросом
+        if (sessionManager.getTokenExpiry() == 0L && refreshToken != null) {
+            // Пробуем получить пользователя — если 401, токен истёк
+            val user = supabase.getUser(currentToken)
+            if (user == null) {
+                // Токен невалиден — обновляем
+                return performRefresh(currentToken, refreshToken)
+            }
+            return currentToken
+        }
+
+        // Если токен не истекает скоро — возвращаем текущий
+        if (!sessionManager.isTokenExpiredOrExpiringSoon()) return currentToken
+
+        // Пробуем обновить через refresh token
+        if (refreshToken == null) return currentToken
+        return performRefresh(currentToken, refreshToken)
+    }
+
+    private suspend fun performRefresh(currentToken: String, refreshToken: String): String {
+        val newTokenResponse = supabase.refreshToken(refreshToken) ?: return currentToken
+        sessionManager.saveAccessToken(newTokenResponse.accessToken)
+        newTokenResponse.refreshToken?.let { sessionManager.saveRefreshToken(it) }
+        newTokenResponse.expiresIn?.let { expiresIn ->
+            sessionManager.saveTokenExpiry(System.currentTimeMillis() + expiresIn * 1000L)
+        }
+        invalidateCache()
+        android.util.Log.d("AuthRepository", "Token refreshed successfully")
+        return newTokenResponse.accessToken
+    }
+
+    override suspend fun changePassword(accessToken: String, newPassword: String): Result<Unit> {
+        return supabase.changePassword(accessToken, newPassword)
+    }
+
+    override suspend fun updateProfileVisibility(accessToken: String, isPublic: Boolean): Result<Unit> {
+        return supabase.updateProfileVisibility(accessToken, isPublic)
     }
 
     override suspend fun googleSignIn(idToken: String): Result<Unit> {
@@ -56,6 +104,11 @@ class AuthRepositoryImpl @Inject constructor(
             // Сохраняем user ID если он есть в ответе
             tokenResponse.user?.id?.let { userId ->
                 sessionManager.saveUserId(userId)
+            }
+            // Сохраняем refresh token и время истечения
+            tokenResponse.refreshToken?.let { sessionManager.saveRefreshToken(it) }
+            tokenResponse.expiresIn?.let { expiresIn ->
+                sessionManager.saveTokenExpiry(System.currentTimeMillis() + expiresIn * 1000L)
             }
             tokenResponse
         }
@@ -136,7 +189,13 @@ class AuthRepositoryImpl @Inject constructor(
             supabase.getFavoriteTracks(accessToken, limit, orderByPlayCount).also { cachedFavTracks = it }
         }
     }
-    
+
+    override suspend fun getFavoriteTracksForUser(accessToken: String, userId: String, limit: Int): Result<List<SupabaseService.FavoriteTrackResponse>> {
+        return runCatching {
+            supabase.getFavoriteTracksForUser(accessToken, userId, limit)
+        }
+    }
+
     override suspend fun addFavoriteTrack(accessToken: String, track: SupabaseService.FavoriteTrackInsert): Result<Unit> {
         return supabase.addFavoriteTrack(accessToken, track)
     }
@@ -158,6 +217,10 @@ class AuthRepositoryImpl @Inject constructor(
     
     override suspend fun addTrackHistory(accessToken: String, track: SupabaseService.TrackHistoryInsert): Result<Unit> {
         return supabase.addTrackHistory(accessToken, track)
+    }
+
+    override suspend fun getTrackHistory(accessToken: String, limit: Int): Result<List<SupabaseService.TrackHistoryResponse>> {
+        return runCatching { supabase.getTrackHistory(accessToken, limit) }
     }
     
     override suspend fun incrementTrackPlayCount(accessToken: String, trackId: String, trackTitle: String, trackArtist: String, trackCoverUrl: String?, trackPreviewUrl: String?): Result<Unit> {
@@ -268,6 +331,10 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun getPublicPlaylists(accessToken: String, limit: Int): List<SupabaseService.PlaylistResponse> {
         return supabase.getPublicPlaylists(accessToken, limit)
+    }
+
+    override suspend fun searchPublicPlaylists(query: String, limit: Int): List<SupabaseService.PlaylistResponse> {
+        return supabase.searchPublicPlaylists(query, limit)
     }
 
     override suspend fun getRecommendedPlaylists(accessToken: String, favoriteArtistNames: List<String>, limit: Int): List<SupabaseService.PlaylistResponse> {

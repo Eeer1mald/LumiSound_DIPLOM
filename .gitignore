@@ -15,3 +15,7 @@
 .cxx
 local.properties
 *.class
+
+# Signing keystores — never commit to git
+*.jks
+*.keystore

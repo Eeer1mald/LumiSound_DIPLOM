@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.auth.welcome
+﻿package com.example.lumisound.feature.auth.welcome
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -28,10 +28,9 @@ import androidx.compose.material3.Text
 import com.example.lumisound.R
 import com.example.lumisound.feature.auth.components.GradientButton
 import com.example.lumisound.feature.auth.components.OutlinedGradientButton
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun WelcomeScreen(
@@ -45,7 +44,7 @@ fun WelcomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ColorBackground)
+            .background(LocalAppColors.current.background)
             .padding(horizontal = 24.dp, vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
@@ -70,7 +69,7 @@ fun WelcomeScreen(
             ) {
                 Text(
                     text = "Твоя музыка.",
-                    color = ColorOnBackground,
+                    color = LocalAppColors.current.onBackground,
                     textAlign = TextAlign.Center,
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
@@ -78,7 +77,7 @@ fun WelcomeScreen(
                 )
                 Text(
                     text = "Твой вкус.",
-                    color = ColorOnBackground,
+                    color = LocalAppColors.current.onBackground,
                     textAlign = TextAlign.Center,
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,

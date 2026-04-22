@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.profile
+﻿package com.example.lumisound.feature.profile
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -65,12 +65,9 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.lumisound.feature.home.TrackPreview
 import com.example.lumisound.ui.theme.ColorAccentSecondary
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 
 @Composable
@@ -79,7 +76,7 @@ fun ProfileScreen(
     onRatingsClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onArtistClick: (artistId: String, artistName: String, artistImageUrl: String?) -> Unit = { _, _, _ -> },
-    onTrackClick: (trackId: String, title: String, artist: String, coverUrl: String?, previewUrl: String?) -> Unit = { _, _, _, _, _ -> },
+    onTrackClick: (tracks: List<FavoriteTrack>, index: Int) -> Unit = { _, _ -> },
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -144,7 +141,7 @@ fun ProfileScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ColorBackground)
+            .background(LocalAppColors.current.background)
             .statusBarsPadding()
     ) {
         // Используем remember для scrollState чтобы избежать пересоздания при recomposition
@@ -160,7 +157,7 @@ fun ProfileScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(ColorBackground)
+                    .background(LocalAppColors.current.background)
                     .padding(horizontal = 16.dp, vertical = 24.dp)
             ) {
                 Column(
@@ -177,7 +174,7 @@ fun ProfileScreen(
                                 .fillMaxSize()
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(color = GradientStart)
-                                .border(width = 4.dp, color = ColorBackground, shape = RoundedCornerShape(16.dp))
+                                .border(width = 4.dp, color = LocalAppColors.current.background, shape = RoundedCornerShape(16.dp))
                                 .clickable { imagePicker.launch("image/*") },
                             contentAlignment = Alignment.Center
                         ) {
@@ -209,7 +206,7 @@ fun ProfileScreen(
                                 )
                                 .border(
                                     width = 3.dp,
-                                    color = ColorBackground,
+                                    color = LocalAppColors.current.background,
                                     shape = CircleShape
                                 )
                                 .clickable { imagePicker.launch("image/*") },
@@ -229,7 +226,7 @@ fun ProfileScreen(
                     // Username - кликабельный для редактирования
                     Text(
                         text = username,
-                        color = ColorOnBackground,
+                        color = LocalAppColors.current.onBackground,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.clickable {
@@ -258,7 +255,7 @@ fun ProfileScreen(
                     ) {
                         Text(
                             text = bio ?: "О себе",
-                            color = if (bio != null) ColorOnBackground else ColorSecondary,
+                            color = if (bio != null) LocalAppColors.current.onBackground else LocalAppColors.current.secondary,
                             fontSize = 14.sp,
                             style = if (bio == null) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyMedium
                         )
@@ -277,7 +274,7 @@ fun ProfileScreen(
                         modifier = Modifier
                             .size(40.dp)
                             .background(
-                                color = ColorSurface.copy(alpha = 0.8f), // Тёмно-серый вместо градиента
+                                color = LocalAppColors.current.surface.copy(alpha = 0.8f), // Тёмно-серый вместо градиента
                                 shape = CircleShape
                             )
                             .border(
@@ -290,7 +287,7 @@ fun ProfileScreen(
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Settings",
-                            tint = ColorOnBackground,
+                            tint = LocalAppColors.current.onBackground,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -340,7 +337,7 @@ fun ProfileScreen(
                 ) {
                     Text(
                         text = "Любимые треки сейчас",
-                        color = ColorOnBackground,
+                        color = LocalAppColors.current.onBackground,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -357,16 +354,11 @@ fun ProfileScreen(
                             key = { it.id },
                             contentType = { "track_card" }
                         ) { track ->
+                            val index = favoriteTracks.indexOf(track)
                             FavoriteTrackCard(
                                 track = track,
                                 onClick = {
-                                    onTrackClick(
-                                        track.trackId,
-                                        track.title,
-                                        track.artist,
-                                        track.coverUrl,
-                                        track.previewUrl
-                                    )
+                                    onTrackClick(favoriteTracks, index)
                                 }
                             )
                         }
@@ -374,7 +366,7 @@ fun ProfileScreen(
                 } else {
                     Text(
                         text = "Начните слушать музыку, чтобы увидеть ваши любимые треки",
-                        color = ColorSecondary,
+                        color = LocalAppColors.current.secondary,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(vertical = 16.dp)
                     )
@@ -394,7 +386,7 @@ fun ProfileScreen(
                 ) {
                     Text(
                         text = "Любимые исполнители сейчас",
-                        color = ColorOnBackground,
+                        color = LocalAppColors.current.onBackground,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -420,7 +412,7 @@ fun ProfileScreen(
                 } else {
                     Text(
                         text = "Начните слушать музыку, чтобы увидеть ваших любимых артистов",
-                        color = ColorSecondary,
+                        color = LocalAppColors.current.secondary,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(vertical = 16.dp)
                     )
@@ -507,9 +499,7 @@ private fun StatBox(
     modifier: Modifier = Modifier
 ) {
     // Заменены градиенты на однотонные цвета
-    val statBoxColor = remember {
-        ColorSurface.copy(alpha = 0.6f) // Тёмно-серый вместо градиента
-    }
+    val statBoxColor = LocalAppColors.current.surface.copy(alpha = 0.6f)
     val iconColorSolid = remember {
         GradientStart.copy(alpha = 0.2f) // Однотонный акцентный цвет
     }
@@ -548,14 +538,14 @@ private fun StatBox(
 
         Text(
             text = value,
-            color = ColorOnBackground,
+            color = LocalAppColors.current.onBackground,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold
         )
 
         Text(
             text = label,
-            color = ColorSecondary,
+            color = LocalAppColors.current.secondary,
             fontSize = 10.sp
         )
     }
@@ -568,9 +558,7 @@ private fun FavoriteTrackCard(
     modifier: Modifier = Modifier
 ) {
     // Заменён градиент на однотонный цвет
-    val trackCardColor = remember {
-        ColorSurface // Тёмно-серый вместо градиента
-    }
+    val trackCardColor = LocalAppColors.current.surface
     Column(
         modifier = modifier
             .width(104.dp)
@@ -605,7 +593,7 @@ private fun FavoriteTrackCard(
         }
         Text(
             text = track.title,
-            color = ColorOnBackground,
+            color = LocalAppColors.current.onBackground,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -613,7 +601,7 @@ private fun FavoriteTrackCard(
         )
         Text(
             text = track.artist,
-            color = ColorSecondary,
+            color = LocalAppColors.current.secondary,
             fontSize = 10.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -628,9 +616,7 @@ private fun FavoriteArtistCard(
     modifier: Modifier = Modifier
 ) {
     // Заменён градиент на однотонный цвет
-    val artistCardColor = remember {
-        ColorSurface // Тёмно-серый вместо градиента
-    }
+    val artistCardColor = LocalAppColors.current.surface
     Column(
         modifier = modifier
             .width(89.dp)
@@ -665,7 +651,7 @@ private fun FavoriteArtistCard(
         }
         Text(
             text = artist.name,
-            color = ColorOnBackground,
+            color = LocalAppColors.current.onBackground,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -684,9 +670,7 @@ private fun MenuItemCard(
     modifier: Modifier = Modifier
 ) {
     // Заменены градиенты на однотонные цвета
-    val menuCardColor = remember {
-        ColorSurface.copy(alpha = 0.8f) // Тёмно-серый вместо градиента
-    }
+    val menuCardColor = LocalAppColors.current.surface.copy(alpha = 0.8f)
     val iconColorSolid = remember(gradient) {
         // Используем первый цвет градиента или средний акцентный цвет
         GradientStart.copy(alpha = 0.5f) // Однотонный акцентный цвет
@@ -737,13 +721,13 @@ private fun MenuItemCard(
             ) {
                 Text(
                     text = label,
-                    color = ColorOnBackground,
+                    color = LocalAppColors.current.onBackground,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
                     text = subtitle,
-                    color = ColorSecondary,
+                    color = LocalAppColors.current.secondary,
                     fontSize = 12.sp
                 )
             }

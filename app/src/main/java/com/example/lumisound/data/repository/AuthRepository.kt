@@ -5,6 +5,10 @@ import com.example.lumisound.data.remote.SupabaseTokenResponse
 
 interface AuthRepository {
     suspend fun login(email: String, password: String): Result<SupabaseTokenResponse>
+    /** Обновляет access_token если он истёк. Возвращает актуальный токен или null если не удалось. */
+    suspend fun refreshTokenIfNeeded(): String?
+    suspend fun changePassword(accessToken: String, newPassword: String): Result<Unit>
+    suspend fun updateProfileVisibility(accessToken: String, isPublic: Boolean): Result<Unit>
     suspend fun googleSignIn(idToken: String): Result<Unit>
     suspend fun signUp(email: String, password: String): Result<Unit>
     suspend fun signUpLoginCreateProfile(username: String, email: String, password: String): Result<SupabaseTokenResponse>
@@ -22,6 +26,7 @@ interface AuthRepository {
     
     // Favorite Tracks
     suspend fun getFavoriteTracks(accessToken: String, limit: Int = 20, orderByPlayCount: Boolean = false): Result<List<SupabaseService.FavoriteTrackResponse>>
+    suspend fun getFavoriteTracksForUser(accessToken: String, userId: String, limit: Int = 30): Result<List<SupabaseService.FavoriteTrackResponse>>
     suspend fun addFavoriteTrack(accessToken: String, track: SupabaseService.FavoriteTrackInsert): Result<Unit>
     suspend fun removeFavoriteTrack(accessToken: String, trackId: String): Result<Unit>
     
@@ -31,6 +36,7 @@ interface AuthRepository {
     
     // Track History
     suspend fun addTrackHistory(accessToken: String, track: SupabaseService.TrackHistoryInsert): Result<Unit>
+    suspend fun getTrackHistory(accessToken: String, limit: Int = 1): Result<List<SupabaseService.TrackHistoryResponse>>
     
     // Play Count Tracking
     suspend fun incrementTrackPlayCount(accessToken: String, trackId: String, trackTitle: String, trackArtist: String, trackCoverUrl: String? = null, trackPreviewUrl: String? = null): Result<Unit>
@@ -68,6 +74,7 @@ interface AuthRepository {
     suspend fun getPlaylistTracks(accessToken: String, playlistId: String): List<SupabaseService.PlaylistTrackResponse>
     suspend fun removeTrackFromPlaylist(accessToken: String, playlistId: String, trackId: String): Result<Unit>
     suspend fun getPublicPlaylists(accessToken: String, limit: Int = 20): List<SupabaseService.PlaylistResponse>
+    suspend fun searchPublicPlaylists(query: String, limit: Int = 8): List<SupabaseService.PlaylistResponse>
     suspend fun getRecommendedPlaylists(accessToken: String, favoriteArtistNames: List<String>, limit: Int = 20): List<SupabaseService.PlaylistResponse>
     suspend fun likePlaylist(accessToken: String, playlistId: String): Result<Unit>
     suspend fun unlikePlaylist(accessToken: String, playlistId: String): Result<Unit>

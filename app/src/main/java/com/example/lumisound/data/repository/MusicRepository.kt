@@ -49,6 +49,13 @@ class MusicRepository @Inject constructor(
         return audiusApi.searchArtists(query, limit)
     }
 
+    suspend fun searchPlaylists(query: String, limit: Int = 6): Result<List<com.example.lumisound.data.remote.AudiusPlaylist>> {
+        return audiusApi.searchPlaylists(query, limit)
+    }
+
+    /** Строит stream URL для трека — не требует сетевого запроса */
+    fun getStreamUrl(trackId: String): String = audiusApi.getStreamUrl(trackId)
+
     suspend fun searchTracks(query: String, limit: Int = 20): Result<List<Track>> {
         return audiusApi.searchTracks(query, limit).map { audiusTracks ->
             audiusTracks.map { it.toTrack() }
@@ -277,7 +284,9 @@ class MusicRepository @Inject constructor(
             hdImageUrl = hdImageUrl ?: artworkUrl,
             previewUrl = streamUrl,
             trackUrl = this.permalink?.let { "https://audius.co$it" },
-            genre = this.genre
+            genre = this.genre,
+            playCount = this.playCount,
+            duration = this.duration
         )
     }
 }

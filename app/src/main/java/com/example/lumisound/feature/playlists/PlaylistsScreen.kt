@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.playlists
+﻿package com.example.lumisound.feature.playlists
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,12 +38,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.example.lumisound.feature.home.components.TopAppBar
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 data class Playlist(
     val id: String,
@@ -63,7 +60,7 @@ fun PlaylistsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ColorBackground)
+            .background(LocalAppColors.current.background)
             .statusBarsPadding() // Отступ для статус-бара
     ) {
         Column(
@@ -110,14 +107,14 @@ fun PlaylistsScreen(
             ) {
                 Text(
                     text = "Мои плейлисты",
-                    color = ColorOnBackground,
+                    color = LocalAppColors.current.onBackground,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
                 Text(
                     text = "${playlists.size} ${if (playlists.size == 1) "плейлист" else "плейлистов"}",
-                    color = ColorSecondary,
+                    color = LocalAppColors.current.secondary,
                     fontSize = 14.sp
                 )
             }
@@ -139,7 +136,7 @@ fun PlaylistsScreen(
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .background(
-                                color = ColorSurface, // Тёмно-серый вместо градиента
+                                color = LocalAppColors.current.surface, // Тёмно-серый вместо градиента
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .border(
@@ -175,7 +172,7 @@ fun PlaylistsScreen(
 
                         Text(
                             text = "Создайте свой первый плейлист",
-                            color = ColorOnBackground,
+                            color = LocalAppColors.current.onBackground,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -184,7 +181,7 @@ fun PlaylistsScreen(
 
                         Text(
                             text = "Собирайте любимые треки в плейлисты и слушайте их когда угодно",
-                            color = ColorSecondary,
+                            color = LocalAppColors.current.secondary,
                             fontSize = 14.sp,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
@@ -256,7 +253,7 @@ private fun PlaylistCard(
         modifier = modifier
             .fillMaxWidth()
             .background(
-                color = ColorSurface.copy(alpha = 0.8f), // Тёмно-серый вместо градиента
+                color = LocalAppColors.current.surface.copy(alpha = 0.8f), // Тёмно-серый вместо градиента
                 shape = RoundedCornerShape(12.dp)
             )
             .border(
@@ -281,13 +278,13 @@ private fun PlaylistCard(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ColorSurface) // Тёмно-серый вместо градиента
+                        .background(LocalAppColors.current.surface) // Тёмно-серый вместо градиента
                 )
             } else {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ColorSurface), // Тёмно-серый вместо градиента плейлиста
+                        .background(LocalAppColors.current.surface), // Тёмно-серый вместо градиента плейлиста
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -339,7 +336,7 @@ private fun PlaylistCard(
         ) {
             Text(
                 text = playlist.name,
-                color = ColorOnBackground,
+                color = LocalAppColors.current.onBackground,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -347,7 +344,7 @@ private fun PlaylistCard(
             )
             Text(
                 text = "${playlist.trackCount} ${if (playlist.trackCount == 1) "трек" else "треков"}",
-                color = ColorSecondary,
+                color = LocalAppColors.current.secondary,
                 fontSize = 12.sp
             )
         }
@@ -364,7 +361,7 @@ private fun CreatePlaylistCard(
             .fillMaxWidth()
             .aspectRatio(1f)
             .background(
-                color = ColorSurface.copy(alpha = 0.6f), // Тёмно-серый вместо градиента
+                color = LocalAppColors.current.surface.copy(alpha = 0.6f), // Тёмно-серый вместо градиента
                 shape = RoundedCornerShape(12.dp)
             )
             .border(
@@ -402,7 +399,7 @@ private fun CreatePlaylistCard(
             }
             Text(
                 text = "Создать",
-                color = ColorSecondary,
+                color = LocalAppColors.current.secondary,
                 fontSize = 12.sp
             )
         }

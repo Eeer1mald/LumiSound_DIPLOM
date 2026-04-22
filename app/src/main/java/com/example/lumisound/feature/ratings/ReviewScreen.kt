@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.ratings
+﻿package com.example.lumisound.feature.ratings
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -71,12 +71,9 @@ import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
 import com.example.lumisound.data.model.Track
 import com.example.lumisound.data.remote.SupabaseService
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -97,11 +94,11 @@ fun ReviewScreen(
     LaunchedEffect(track.id) { viewModel.loadForTrack(track.id) }
     LaunchedEffect(state.savedSuccess) { if (state.savedSuccess) viewModel.clearSuccess() }
 
-    Box(modifier = Modifier.fillMaxSize().background(ColorBackground)) {
+    Box(modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background)) {
         // Scaffold обеспечивает правильное поведение с клавиатурой
         Scaffold(
-            containerColor = ColorBackground,
-            contentColor = ColorOnBackground,
+            containerColor = LocalAppColors.current.background,
+            contentColor = LocalAppColors.current.onBackground,
             topBar = {
                 Column(modifier = Modifier.statusBarsPadding()) {
                     // ── Хедер ──────────────────────────────────────────
@@ -113,7 +110,7 @@ fun ReviewScreen(
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Close, "Close", tint = ColorOnBackground, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Close, "Close", tint = LocalAppColors.current.onBackground, modifier = Modifier.size(18.dp))
                         }
 
                         // Счётчик комментариев — слева, со склонением
@@ -126,7 +123,7 @@ fun ReviewScreen(
                         }
                         Text(
                             "$count $word",
-                            color = ColorOnBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                            color = LocalAppColors.current.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.align(Alignment.CenterStart).padding(start = 52.dp)
                         )
 
@@ -159,19 +156,19 @@ fun ReviewScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(ColorSurface)) {
+                        Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(LocalAppColors.current.surface)) {
                             if (!track.imageUrl.isNullOrEmpty()) {
                                 AsyncImage(
                                     model = ImageRequest.Builder(LocalContext.current).data(track.imageUrl).crossfade(false).build(),
                                     contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
                                 )
                             } else {
-                                Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(22.dp).align(Alignment.Center))
+                                Icon(Icons.Default.MusicNote, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(22.dp).align(Alignment.Center))
                             }
                         }
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(track.name, color = ColorOnBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(track.artist ?: "", color = ColorSecondary, fontSize = 12.sp, maxLines = 1)
+                            Text(track.name, color = LocalAppColors.current.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(track.artist ?: "", color = LocalAppColors.current.secondary, fontSize = 12.sp, maxLines = 1)
                         }
                         // Кружок с оценкой + карандаш
                         Row(
@@ -182,7 +179,7 @@ fun ReviewScreen(
                             Box(
                                 modifier = Modifier
                                     .size(32.dp)
-                                    .background(ColorSurface, CircleShape)
+                                    .background(LocalAppColors.current.surface, CircleShape)
                                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                         showRatingSheet = true
                                     },
@@ -215,7 +212,7 @@ fun ReviewScreen(
                                     .background(
                                         brush = if (displayScore != null)
                                             Brush.linearGradient(listOf(GradientStart, GradientEnd))
-                                        else Brush.linearGradient(listOf(ColorSurface, ColorSurface)),
+                                        else Brush.linearGradient(listOf(LocalAppColors.current.surface, LocalAppColors.current.surface)),
                                         shape = CircleShape
                                     )
                                     .border(
@@ -236,7 +233,7 @@ fun ReviewScreen(
                                         letterSpacing = (-0.5).sp
                                     )
                                 } else {
-                                    Icon(Icons.Default.Star, "Rate", tint = ColorSecondary, modifier = Modifier.size(22.dp))
+                                    Icon(Icons.Default.Star, "Rate", tint = LocalAppColors.current.secondary, modifier = Modifier.size(22.dp))
                                 }
                             }
                         }
@@ -259,7 +256,7 @@ fun ReviewScreen(
                 ) {
                     // Аватар профиля
                     Box(
-                        modifier = Modifier.size(34.dp).clip(CircleShape).background(ColorSurface),
+                        modifier = Modifier.size(34.dp).clip(CircleShape).background(LocalAppColors.current.surface),
                         contentAlignment = Alignment.Center
                     ) {
                         if (!state.userAvatarUrl.isNullOrEmpty()) {
@@ -270,26 +267,26 @@ fun ReviewScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
                                 loading = {
-                                    Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(18.dp))
                                 },
                                 error = {
-                                    Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(18.dp))
                                 },
                                 success = { SubcomposeAsyncImageContent() }
                             )
                         } else {
-                            Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(18.dp))
                         }
                     }
 
                     OutlinedTextField(
                         value = state.commentText,
                         onValueChange = { if (it.length <= 100) viewModel.setCommentText(it) },
-                        placeholder = { Text("Комментарий...", color = ColorSecondary, fontSize = 13.sp) },
+                        placeholder = { Text("Комментарий...", color = LocalAppColors.current.secondary, fontSize = 13.sp) },
                         modifier = Modifier.weight(1f),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent,
-                            focusedTextColor = ColorOnBackground, unfocusedTextColor = ColorOnBackground,
+                            focusedTextColor = LocalAppColors.current.onBackground, unfocusedTextColor = LocalAppColors.current.onBackground,
                             cursorColor = GradientStart,
                             focusedContainerColor = Color.White.copy(alpha = 0.07f),
                             unfocusedContainerColor = Color.White.copy(alpha = 0.07f)
@@ -335,8 +332,8 @@ fun ReviewScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Нет комментариев", color = ColorOnBackground.copy(alpha = 0.5f), fontSize = 15.sp, textAlign = TextAlign.Center)
-                        Text("Будьте первым!", color = ColorSecondary, fontSize = 13.sp, textAlign = TextAlign.Center)
+                        Text("Нет комментариев", color = LocalAppColors.current.onBackground.copy(alpha = 0.5f), fontSize = 15.sp, textAlign = TextAlign.Center)
+                        Text("Будьте первым!", color = LocalAppColors.current.secondary, fontSize = 13.sp, textAlign = TextAlign.Center)
                     }
                 }
             } else {
@@ -447,7 +444,7 @@ private fun RatingBottomSheet(
         Spacer(modifier = Modifier.height(16.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Оценить трек", color = ColorOnBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text("Оценить трек", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             state.overallScore?.let { score ->
                 Box(
                     modifier = Modifier.background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 6.dp)
@@ -478,7 +475,7 @@ private fun RatingBottomSheet(
                 .fillMaxWidth().height(48.dp)
                 .background(
                     brush = if (state.isRatingComplete) Brush.linearGradient(listOf(GradientStart, GradientEnd))
-                    else Brush.linearGradient(listOf(ColorSurface, ColorSurface)),
+                    else Brush.linearGradient(listOf(LocalAppColors.current.surface, LocalAppColors.current.surface)),
                     shape = RoundedCornerShape(12.dp)
                 )
                 .clickable(
@@ -495,7 +492,7 @@ private fun RatingBottomSheet(
                 Text(
                     if (!state.isRatingComplete) "Оцените все критерии"
                     else if (state.existingRating != null) "Обновить оценку" else "Сохранить оценку",
-                    color = if (state.isRatingComplete) Color.White else ColorSecondary,
+                    color = if (state.isRatingComplete) Color.White else LocalAppColors.current.secondary,
                     fontSize = 15.sp, fontWeight = FontWeight.SemiBold
                 )
             }
@@ -516,7 +513,7 @@ private fun SheetCriterionRow(label: String, score: Int?, onScoreChange: (Int) -
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(label, color = ColorOnBackground, fontSize = 13.sp)
+            Text(label, color = LocalAppColors.current.onBackground, fontSize = 13.sp)
             Box(
                 modifier = Modifier
                     .background(
@@ -527,7 +524,7 @@ private fun SheetCriterionRow(label: String, score: Int?, onScoreChange: (Int) -
             ) {
                 Text(
                     score?.toString() ?: "—",
-                    color = if (score != null) GradientStart else ColorSecondary,
+                    color = if (score != null) GradientStart else LocalAppColors.current.secondary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Black
                 )
@@ -579,12 +576,12 @@ private fun StatsBottomSheet(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Моя оценка", color = ColorOnBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text("Моя оценка", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Кнопка редактировать
                 Box(
                     modifier = Modifier
-                        .background(ColorSurface, RoundedCornerShape(8.dp))
+                        .background(LocalAppColors.current.surface, RoundedCornerShape(8.dp))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onEditClick() }
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
@@ -629,8 +626,8 @@ private fun StatsBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Средняя оценка", color = ColorSecondary, fontSize = 12.sp)
-                Text("${avg.ratingCount} ${if (avg.ratingCount == 1) "оценка" else "оценок"}", color = ColorSecondary, fontSize = 12.sp)
+                Text("Средняя оценка", color = LocalAppColors.current.secondary, fontSize = 12.sp)
+                Text("${avg.ratingCount} ${if (avg.ratingCount == 1) "оценка" else "оценок"}", color = LocalAppColors.current.secondary, fontSize = 12.sp)
             }
             val avgCriteria = listOf(
                 ScoreCriterion.RHYME.label to avg.avgRhyme,
@@ -651,7 +648,7 @@ private fun StatsBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Ваша оценка", color = ColorSecondary, fontSize = 12.sp)
+                Text("Ваша оценка", color = LocalAppColors.current.secondary, fontSize = 12.sp)
             }
             val myCriteria = listOf(
                 ScoreCriterion.RHYME.label to rating.rhymeScore?.toDouble(),
@@ -667,7 +664,7 @@ private fun StatsBottomSheet(
             }
         } else {
             Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
-                Text("Оценок пока нет. Будьте первым!", color = ColorSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
+                Text("Оценок пока нет. Будьте первым!", color = LocalAppColors.current.secondary, fontSize = 14.sp, textAlign = TextAlign.Center)
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -681,7 +678,7 @@ private fun CriterionBar(label: String, value: Double, isAverage: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(label, color = ColorSecondary, fontSize = 12.sp, modifier = Modifier.width(140.dp))
+        Text(label, color = LocalAppColors.current.secondary, fontSize = 12.sp, modifier = Modifier.width(140.dp))
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -751,9 +748,9 @@ private fun CommentRow(
                     Text("Отмена")
                 }
             },
-            containerColor = ColorSurface,
-            titleContentColor = ColorOnBackground,
-            textContentColor = ColorSecondary
+            containerColor = LocalAppColors.current.surface,
+            titleContentColor = LocalAppColors.current.onBackground,
+            textContentColor = LocalAppColors.current.secondary
         )
     }
 
@@ -766,7 +763,7 @@ private fun CommentRow(
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(ColorSurface)
+                .background(LocalAppColors.current.surface)
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onAvatarClick() },
             contentAlignment = Alignment.Center
         ) {
@@ -776,21 +773,21 @@ private fun CommentRow(
                     contentDescription = "Avatar",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
-                    loading = { Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(18.dp)) },
-                    error = { Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(18.dp)) },
+                    loading = { Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(18.dp)) },
+                    error = { Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(18.dp)) },
                     success = { SubcomposeAsyncImageContent() }
                 )
             } else {
-                Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(18.dp))
             }
         }
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(displayName, color = ColorOnBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text("• $dateStr", color = ColorSecondary, fontSize = 11.sp)
+                Text(displayName, color = LocalAppColors.current.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("• $dateStr", color = LocalAppColors.current.secondary, fontSize = 11.sp)
             }
             Spacer(modifier = Modifier.height(3.dp))
-            Text(comment.comment, color = ColorOnBackground, fontSize = 14.sp, lineHeight = 20.sp)
+            Text(comment.comment, color = LocalAppColors.current.onBackground, fontSize = 14.sp, lineHeight = 20.sp)
         }
         if (isOwner) {
             Icon(

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.lumisound.data.model.Track
 import com.example.lumisound.data.player.AudioPlayerService
 import com.example.lumisound.data.repository.AuthRepository
+import com.example.lumisound.data.repository.MusicRepository
 import com.example.lumisound.data.local.SessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -18,9 +19,10 @@ import javax.inject.Inject
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
-    private val audioPlayerService: AudioPlayerService,
-    private val playerStateHolder: com.example.lumisound.data.player.PlayerStateHolder,
+    val audioPlayerService: AudioPlayerService,
+    val playerStateHolder: com.example.lumisound.data.player.PlayerStateHolder,
     private val authRepository: AuthRepository,
+    private val musicRepository: MusicRepository,
     private val sessionManager: SessionManager
 ) : ViewModel() {
     
@@ -38,6 +40,12 @@ class PlayerViewModel @Inject constructor(
 
     private val _avgScore = MutableStateFlow<Float?>(null)
     val avgScore: StateFlow<Float?> = _avgScore.asStateFlow()
+
+    /** Показывать плавающие комментарии — читается из PlayerStateHolder */
+    val showFloatingComments: Boolean get() = playerStateHolder.showFloatingComments
+
+    /** Есть ли предыдущий трек */
+    val hasPrevious: Boolean get() = playerStateHolder.hasPrevious
     
     private var positionUpdateJob: Job? = null
     private var trackPlayTrackingJob: Job? = null
@@ -67,7 +75,35 @@ class PlayerViewModel @Inject constructor(
                     stopPositionUpdates()
                 }
             }
-            
+
+            override fun onMediaItemTransition(
+                mediaItem: androidx.media3.common.MediaItem?,
+                reason: Int
+            ) {
+                // Если автопереход (не ручной) и autoplay выключен — останавливаем
+                if (reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_AUTO
+                    && !playerStateHolder.autoplayEnabled) {
+                    audioPlayerService.pause()
+                    return
+                }
+                // ExoPlayer перешёл к следующему треку (авто или вручную)
+                val newIdx = audioPlayerService.getCurrentMediaIndex()
+                val playlist = playerStateHolder.playlist.value
+                val newTrack = playlist.getOrNull(newIdx) ?: return
+                if (_currentTrack.value?.id != newTrack.id) {
+                    playerStateHolder.setPlaylist(playlist, newIdx)
+                    _currentTrack.value = newTrack
+                    playerStateHolder.setCurrentTrack(newTrack)
+                    _currentPosition.value = 0L
+                    _duration.value = 0L
+                    loadAvgScore(newTrack.id)
+                    hasTrackedCurrentTrack = false
+                    lastTrackedTrackId = null
+                    stopTrackPlayTracking()
+                    startTrackPlayTracking(newTrack)
+                }
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
                     androidx.media3.common.Player.STATE_READY -> {
@@ -77,12 +113,15 @@ class PlayerViewModel @Inject constructor(
                     androidx.media3.common.Player.STATE_ENDED -> {
                         _isPlaying.value = false
                         stopPositionUpdates()
-                        // Отслеживаем прослушивание когда трек закончился
                         val currentTrack = _currentTrack.value
                         val currentPosition = _currentPosition.value
                         val currentDuration = _duration.value
                         if (currentTrack != null && currentPosition > 0) {
                             trackPlayIfNeeded(currentTrack, currentPosition, currentDuration)
+                        }
+                        // Автовоспроизведение следующего трека
+                        if (playerStateHolder.autoplayEnabled) {
+                            nextTrack()
                         }
                     }
                 }
@@ -94,34 +133,123 @@ class PlayerViewModel @Inject constructor(
         hasTrackedCurrentTrack = false
         lastTrackedTrackId = null
         stopTrackPlayTracking()
-        
+
         _currentTrack.value = track
         _currentPosition.value = 0L
         _duration.value = 0L
         playerStateHolder.setCurrentTrack(track)
         loadAvgScore(track.id)
         track.previewUrl?.let { url ->
-            audioPlayerService.play(url)
+            // Если трек уже в очереди ExoPlayer — просто переходим к нему
+            val playlist = playerStateHolder.playlist.value
+            val idx = playlist.indexOfFirst { it.id == track.id }
+            if (idx >= 0 && audioPlayerService.getQueueSize() == playlist.size) {
+                // Очередь уже установлена — seekTo нужному индексу
+                val player = audioPlayerService.getPlayer()
+                if (player != null && player.currentMediaItemIndex != idx) {
+                    player.seekTo(idx, 0L)
+                    player.play()
+                } else {
+                    audioPlayerService.resume()
+                }
+            } else {
+                // Одиночный трек — играем напрямую
+                audioPlayerService.play(url)
+            }
             _isPlaying.value = true
             startPositionUpdates()
             startTrackPlayTracking(track)
         }
     }
-    
+
     fun playPlaylist(tracks: List<Track>, startIndex: Int = 0) {
         playerStateHolder.setPlaylist(tracks, startIndex)
-        val track = tracks.getOrNull(startIndex)
-        track?.let { playTrack(it) }
+        val track = tracks.getOrNull(startIndex) ?: return
+
+        hasTrackedCurrentTrack = false
+        lastTrackedTrackId = null
+        stopTrackPlayTracking()
+
+        _currentTrack.value = track
+        _currentPosition.value = 0L
+        _duration.value = 0L
+        playerStateHolder.setCurrentTrack(track)
+        loadAvgScore(track.id)
+
+        // Устанавливаем всю очередь в ExoPlayer — он предзагрузит следующие треки
+        val urls = tracks.mapNotNull { it.previewUrl }
+        if (urls.size == tracks.size) {
+            // Все треки имеют URL — используем нативный плейлист
+            audioPlayerService.setQueue(urls, startIndex)
+        } else {
+            // Некоторые треки без URL — играем только текущий
+            track.previewUrl?.let { audioPlayerService.play(it) }
+        }
+        _isPlaying.value = true
+        startPositionUpdates()
+        startTrackPlayTracking(track)
     }
     
     fun nextTrack() {
-        val nextTrack = playerStateHolder.getNextTrack()
-        nextTrack?.let { playTrack(it) }
+        doNextTrack()
     }
-    
+
+    private fun doNextTrack() {
+        // Сначала пробуем нативный ExoPlayer seek — мгновенно
+        if (audioPlayerService.seekToNext()) {
+            val newIdx = audioPlayerService.getCurrentMediaIndex()
+            val playlist = playerStateHolder.playlist.value
+            val nextTrack = playlist.getOrNull(newIdx)
+            if (nextTrack != null) {
+                playerStateHolder.setPlaylist(playlist, newIdx)
+                _currentTrack.value = nextTrack
+                playerStateHolder.setCurrentTrack(nextTrack)
+                loadAvgScore(nextTrack.id)
+                hasTrackedCurrentTrack = false
+                lastTrackedTrackId = null
+                stopTrackPlayTracking()
+                startTrackPlayTracking(nextTrack)
+            }
+            return
+        }
+
+        // Fallback — ищем похожие треки по артисту
+        val current = _currentTrack.value ?: return
+        viewModelScope.launch {
+            val similar = musicRepository.searchTracks(current.artist, limit = 10).getOrNull()
+                ?.filter { it.id != current.id && !it.previewUrl.isNullOrBlank() }
+                ?.shuffled()
+            if (!similar.isNullOrEmpty()) {
+                playPlaylist(similar, 0)
+            } else {
+                val trending = musicRepository.getDiscoverFeed(page = 0, pageSize = 10).getOrNull()
+                    ?.filter { it.id != current.id && !it.previewUrl.isNullOrBlank() }
+                    ?.shuffled()
+                if (!trending.isNullOrEmpty()) {
+                    playPlaylist(trending, 0)
+                }
+            }
+        }
+    }
+
     fun previousTrack() {
-        val prevTrack = playerStateHolder.getPreviousTrack()
-        prevTrack?.let { playTrack(it) }
+        // Нативный ExoPlayer seek — мгновенно
+        if (audioPlayerService.seekToPrevious()) {
+            val newIdx = audioPlayerService.getCurrentMediaIndex()
+            val playlist = playerStateHolder.playlist.value
+            val prevTrack = playlist.getOrNull(newIdx)
+            if (prevTrack != null) {
+                playerStateHolder.setPlaylist(playlist, newIdx)
+                _currentTrack.value = prevTrack
+                playerStateHolder.setCurrentTrack(prevTrack)
+                loadAvgScore(prevTrack.id)
+                hasTrackedCurrentTrack = false
+                lastTrackedTrackId = null
+                stopTrackPlayTracking()
+                startTrackPlayTracking(prevTrack)
+            }
+        }
+        // Если нет предыдущего — ничего не делаем
     }
     
     fun togglePlayPause() {

@@ -39,41 +39,59 @@ class AppPreloadViewModel @Inject constructor(
     }
 
     private fun preloadAll() {
-        val token = sessionManager.getAccessToken() ?: return
-
         viewModelScope.launch {
-            val profileJob = async { runCatching { authRepository.getProfile(token) } }
-            val ratingsJob = async { runCatching { authRepository.getMyRatings(token, limit = 50) } }
-            val commentsJob = async { runCatching { authRepository.getMyComments(token, limit = 50) } }
+            // Сначала пробуем обновить токен, потом берём актуальный
+            val refreshed = runCatching { authRepository.refreshTokenIfNeeded() }.getOrNull()
+            val validToken = refreshed ?: sessionManager.getAccessToken() ?: return@launch
+            val profileJob = async { runCatching { authRepository.getProfile(validToken) } }
+            val ratingsJob = async { runCatching { authRepository.getMyRatings(validToken, limit = 50) } }
+            val commentsJob = async { runCatching { authRepository.getMyComments(validToken, limit = 50) } }
             val favTracksJob = async {
-                runCatching { authRepository.getFavoriteTracks(token, limit = 20, orderByPlayCount = true) }
+                runCatching { authRepository.getFavoriteTracks(validToken, limit = 20, orderByPlayCount = true) }
             }
-            val favArtistsJob = async { runCatching { authRepository.getFavoriteArtists(token, limit = 20) } }
+            val favArtistsJob = async { runCatching { authRepository.getFavoriteArtists(validToken, limit = 20) } }
+            // История прослушивания — для начального трека
+            val historyJob = async { runCatching { authRepository.getTrackHistory(validToken, limit = 1) } }
             // Быстрый поиск для fallback мини-плеера
             val quickSearchJob = async { runCatching { musicRepository.searchTracks("popular", limit = 5) } }
             val discoverJob = async { runCatching { musicRepository.getDiscoverFeed(30) } }
             val followingJob = async { runCatching { musicRepository.getFollowingFeed(30) } }
 
-            // Ждём favTracks и быстрый поиск параллельно
+            // Ждём историю и быстрый поиск параллельно
+            val history = historyJob.await()
             val favTracks = favTracksJob.await()
             val quickTracks = quickSearchJob.await()
 
-            // Устанавливаем трек: приоритет — избранное, потом быстрый поиск
-            val fromFav = favTracks.getOrNull()?.getOrNull()?.firstOrNull { !it.trackPreviewUrl.isNullOrBlank() }
-            if (fromFav != null) {
+            // Приоритет: последний прослушанный → избранное → быстрый поиск
+            val lastPlayed = history.getOrNull()?.getOrNull()?.firstOrNull()
+            if (lastPlayed != null) {
+                // previewUrl строится из Audius stream URL — не требует сетевого запроса
+                val streamUrl = musicRepository.getStreamUrl(lastPlayed.trackId)
                 playerStateHolder.setCurrentTrack(
                     com.example.lumisound.data.model.Track(
-                        id = fromFav.trackId,
-                        name = fromFav.trackTitle,
-                        artist = fromFav.trackArtist,
-                        imageUrl = fromFav.trackCoverUrl,
-                        previewUrl = fromFav.trackPreviewUrl
+                        id = lastPlayed.trackId,
+                        name = lastPlayed.trackTitle,
+                        artist = lastPlayed.trackArtist,
+                        previewUrl = streamUrl
                     )
                 )
             } else {
-                // Fallback: первый трек из быстрого поиска
-                quickTracks.getOrNull()?.getOrNull()?.firstOrNull { !it.previewUrl.isNullOrBlank() }?.let { t ->
-                    playerStateHolder.setCurrentTrack(t)
+                val fromFav = favTracks.getOrNull()?.getOrNull()?.firstOrNull { !it.trackPreviewUrl.isNullOrBlank() }
+                if (fromFav != null) {
+                    playerStateHolder.setCurrentTrack(
+                        com.example.lumisound.data.model.Track(
+                            id = fromFav.trackId,
+                            name = fromFav.trackTitle,
+                            artist = fromFav.trackArtist,
+                            imageUrl = fromFav.trackCoverUrl,
+                            previewUrl = fromFav.trackPreviewUrl
+                        )
+                    )
+                } else {
+                    // Fallback: первый трек из быстрого поиска
+                    quickTracks.getOrNull()?.getOrNull()?.firstOrNull { !it.previewUrl.isNullOrBlank() }?.let { t ->
+                        playerStateHolder.setCurrentTrack(t)
+                    }
                 }
             }
 

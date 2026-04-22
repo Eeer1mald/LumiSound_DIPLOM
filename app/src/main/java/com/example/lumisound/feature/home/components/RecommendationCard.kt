@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.home.components
+﻿package com.example.lumisound.feature.home.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,8 +22,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.lumisound.feature.home.TrackPreview
-import com.example.lumisound.ui.theme.ColorSurface
-import com.example.lumisound.ui.theme.ColorOnSurface
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun RecommendationCard(
@@ -43,7 +42,7 @@ fun RecommendationCard(
             modifier = Modifier
                 .height(140.dp)
                 .fillMaxWidth()
-                .background(color = ColorSurface, shape = RoundedCornerShape(16.dp)),
+                .background(color = LocalAppColors.current.surface, shape = RoundedCornerShape(16.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -52,8 +51,8 @@ fun RecommendationCard(
                 modifier = Modifier.size(32.dp)
             )
         }
-        Text(text = track.title, style = MaterialTheme.typography.bodyMedium, color = ColorOnSurface)
-        Text(text = track.artist, style = MaterialTheme.typography.bodySmall, color = ColorOnSurface.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text = track.title, style = MaterialTheme.typography.bodyMedium, color = LocalAppColors.current.onSurface)
+        Text(text = track.artist, style = MaterialTheme.typography.bodySmall, color = LocalAppColors.current.onSurface.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

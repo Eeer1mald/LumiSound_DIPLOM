@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.home
+﻿package com.example.lumisound.feature.home
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -33,6 +33,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.lumisound.data.remote.SupabaseService
 import com.example.lumisound.ui.theme.*
+import com.example.lumisound.ui.theme.LocalAppColors
 
 // ── Экран создания синтеза ────────────────────────────────────────────────────
 @Composable
@@ -46,6 +47,9 @@ fun SynthesisCreateScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    var joinCodeInput by remember { mutableStateOf("") }
+    var showJoinScreen by remember { mutableStateOf(false) }
+    var pendingJoinCode by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         if (state.session == null) {
@@ -61,7 +65,7 @@ fun SynthesisCreateScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(ColorBackground).statusBarsPadding()) {
+    Box(modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background).statusBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Header
             Row(
@@ -73,9 +77,9 @@ fun SynthesisCreateScreen(
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.ArrowBack, null, tint = ColorOnBackground, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.ArrowBack, null, tint = LocalAppColors.current.onBackground, modifier = Modifier.size(18.dp))
                 }
-                Text("Синтез", color = ColorOnBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                Text("Синтез", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
             }
 
@@ -83,14 +87,14 @@ fun SynthesisCreateScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(36.dp))
-                        Text("Создаём синтез...", color = ColorSecondary, fontSize = 14.sp)
+                        Text("Создаём синтез...", color = LocalAppColors.current.secondary, fontSize = 14.sp)
                     }
                 }
             } else if (state.error != null) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("⚠️", fontSize = 32.sp)
-                        Text(state.error ?: "", color = ColorSecondary, fontSize = 14.sp, textAlign = TextAlign.Center,
+                        Text(state.error ?: "", color = LocalAppColors.current.secondary, fontSize = 14.sp, textAlign = TextAlign.Center,
                             modifier = Modifier.padding(horizontal = 32.dp))
                         TextButton(onClick = { viewModel.createSession(creatorUsername, creatorAvatarUrl) }) {
                             Text("Попробовать снова", color = GradientStart)
@@ -123,13 +127,13 @@ fun SynthesisCreateScreen(
                     item {
                         Text(
                             state.session?.name ?: "Синтез",
-                            color = ColorOnBackground, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold,
+                            color = LocalAppColors.current.onBackground, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold,
                             textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Поделитесь ссылкой с друзьями — они присоединятся к синтезу",
-                            color = ColorSecondary, fontSize = 13.sp, textAlign = TextAlign.Center,
+                            "Поделитесь кодом с друзьями — они введут его и присоединятся к синтезу",
+                            color = LocalAppColors.current.secondary, fontSize = 13.sp, textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                         )
                     }
@@ -139,7 +143,7 @@ fun SynthesisCreateScreen(
                         item {
                             val code = state.session?.inviteCode ?: ""
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("Пригласи друга в синтез", color = ColorSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Text("Пригласи друга в синтез", color = LocalAppColors.current.secondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
 
                                 // Код — большой и заметный
                                 Box(
@@ -154,22 +158,22 @@ fun SynthesisCreateScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("Код синтеза", color = ColorSecondary, fontSize = 11.sp)
+                                        Text("Код синтеза", color = LocalAppColors.current.secondary, fontSize = 11.sp)
                                         Text(code, color = GradientStart, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 4.sp)
-                                        Text("Нажми чтобы скопировать", color = ColorSecondary, fontSize = 10.sp)
+                                        Text("Нажми чтобы скопировать", color = LocalAppColors.current.secondary, fontSize = 10.sp)
                                     }
                                 }
 
                                 // Кнопка поделиться ссылкой
                                 Row(
                                     modifier = Modifier.fillMaxWidth()
-                                        .background(ColorSurface, RoundedCornerShape(12.dp))
+                                        .background(LocalAppColors.current.surface, RoundedCornerShape(12.dp))
                                         .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
                                         .padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text(link, color = ColorSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f),
+                                    Text(link, color = LocalAppColors.current.secondary, fontSize = 12.sp, modifier = Modifier.weight(1f),
                                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                     Box(
                                         modifier = Modifier.size(32.dp).background(GradientStart.copy(alpha = 0.15f), CircleShape)
@@ -200,20 +204,84 @@ fun SynthesisCreateScreen(
                         }
                     }
 
+                    // Войти в синтез друга по коду
+                    item {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(LocalAppColors.current.surface, RoundedCornerShape(14.dp))
+                                .border(1.dp, Color(0xFF9B59B6).copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text("Войти в синтез друга", color = LocalAppColors.current.secondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.weight(1f).height(44.dp)
+                                        .background(LocalAppColors.current.background, RoundedCornerShape(10.dp))
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    androidx.compose.foundation.text.BasicTextField(
+                                        value = joinCodeInput,
+                                        onValueChange = { joinCodeInput = it.uppercase().take(10) },
+                                        textStyle = androidx.compose.ui.text.TextStyle(
+                                            color = LocalAppColors.current.onBackground,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 3.sp
+                                        ),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                                        decorationBox = { inner ->
+                                            Box(contentAlignment = Alignment.CenterStart) {
+                                                if (joinCodeInput.isEmpty()) Text("Введи код синтеза", color = LocalAppColors.current.secondary, fontSize = 13.sp)
+                                                inner()
+                                            }
+                                        }
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier.size(44.dp)
+                                        .background(
+                                            if (joinCodeInput.isNotBlank())
+                                                Brush.linearGradient(listOf(Color(0xFF6C3FD9), Color(0xFFD93F6C)))
+                                            else
+                                                Brush.linearGradient(listOf(Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.06f))),
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                            if (joinCodeInput.isNotBlank()) {
+                                                pendingJoinCode = joinCodeInput
+                                                showJoinScreen = true
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.ArrowForward, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+
                     // Участники
                     item {
+                        Spacer(modifier = Modifier.height(4.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Участники (${state.participants.size})", color = ColorSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Text("Участники (${state.participants.size})", color = LocalAppColors.current.secondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             Box(
                                 modifier = Modifier.size(28.dp).background(Color.White.copy(alpha = 0.06f), CircleShape)
                                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.refreshParticipants() },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Refresh, null, tint = ColorSecondary, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.Refresh, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(14.dp))
                             }
                         }
                     }
@@ -248,18 +316,34 @@ fun SynthesisCreateScreen(
                         item {
                             Box(
                                 modifier = Modifier.fillMaxWidth()
-                                    .background(ColorSurface, RoundedCornerShape(12.dp))
+                                    .background(LocalAppColors.current.surface, RoundedCornerShape(12.dp))
                                     .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
                                     .padding(16.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text("Ожидаем присоединения друзей...\nМинимум 2 участника для создания плейлиста",
-                                    color = ColorSecondary, fontSize = 13.sp, textAlign = TextAlign.Center)
+                                    color = LocalAppColors.current.secondary, fontSize = 13.sp, textAlign = TextAlign.Center)
                             }
                         }
                     }
                 }
             }
+        }
+
+        // Оверлей — присоединение к синтезу друга по коду
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showJoinScreen && pendingJoinCode.isNotBlank(),
+            enter = androidx.compose.animation.slideInVertically { it },
+            exit = androidx.compose.animation.slideOutVertically { it },
+            modifier = Modifier.fillMaxSize()
+        ) {
+            SynthesisJoinScreen(
+                inviteCode = pendingJoinCode,
+                currentUsername = creatorUsername,
+                currentAvatarUrl = creatorAvatarUrl,
+                onClose = { showJoinScreen = false; joinCodeInput = ""; pendingJoinCode = "" },
+                onJoined = { showJoinScreen = false; joinCodeInput = ""; pendingJoinCode = "" }
+            )
         }
     }
 }
@@ -287,7 +371,7 @@ fun SynthesisJoinScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(ColorBackground).statusBarsPadding()) {
+    Box(modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background).statusBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -298,9 +382,9 @@ fun SynthesisJoinScreen(
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.ArrowBack, null, tint = ColorOnBackground, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.ArrowBack, null, tint = LocalAppColors.current.onBackground, modifier = Modifier.size(18.dp))
                 }
-                Text("Приглашение в синтез", color = ColorOnBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                Text("Приглашение в синтез", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
             }
 
@@ -311,7 +395,7 @@ fun SynthesisJoinScreen(
                 state.error != null -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("⚠️", fontSize = 32.sp)
-                        Text(state.error ?: "", color = ColorSecondary, fontSize = 14.sp, textAlign = TextAlign.Center,
+                        Text(state.error ?: "", color = LocalAppColors.current.secondary, fontSize = 14.sp, textAlign = TextAlign.Center,
                             modifier = Modifier.padding(horizontal = 32.dp))
                     }
                 }
@@ -335,10 +419,10 @@ fun SynthesisJoinScreen(
                         }
 
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(session.name, color = ColorOnBackground, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                            Text(session.name, color = LocalAppColors.current.onBackground, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
                             Text(
                                 "${session.creatorUsername ?: "Пользователь"} приглашает тебя в синтез",
-                                color = ColorSecondary, fontSize = 14.sp, textAlign = TextAlign.Center
+                                color = LocalAppColors.current.secondary, fontSize = 14.sp, textAlign = TextAlign.Center
                             )
                         }
 
@@ -346,12 +430,12 @@ fun SynthesisJoinScreen(
                         if (state.participants.isNotEmpty()) {
                             Column(
                                 modifier = Modifier.fillMaxWidth()
-                                    .background(ColorSurface, RoundedCornerShape(14.dp))
+                                    .background(LocalAppColors.current.surface, RoundedCornerShape(14.dp))
                                     .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
                                     .padding(14.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Text("Уже участвуют (${state.participants.size})", color = ColorSecondary, fontSize = 12.sp)
+                                Text("Уже участвуют (${state.participants.size})", color = LocalAppColors.current.secondary, fontSize = 12.sp)
                                 state.participants.forEach { p ->
                                     ParticipantRow(participant = p)
                                 }
@@ -361,7 +445,7 @@ fun SynthesisJoinScreen(
                         Spacer(modifier = Modifier.weight(1f))
 
                         if (isOwn) {
-                            Text("Это ваш синтез", color = ColorSecondary, fontSize = 14.sp)
+                            Text("Это ваш синтез", color = LocalAppColors.current.secondary, fontSize = 14.sp)
                         } else {
                             // Кнопка присоединиться
                             Box(
@@ -396,17 +480,17 @@ private fun ParticipantRow(participant: SupabaseService.SynthesisParticipant) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(ColorSurface), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(LocalAppColors.current.surface), contentAlignment = Alignment.Center) {
             if (!participant.avatarUrl.isNullOrEmpty()) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current).data(participant.avatarUrl).crossfade(false).build(),
                     contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
                 )
             } else {
-                Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(18.dp))
             }
         }
-        Text(participant.username ?: "Пользователь", color = ColorOnBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        Text(participant.username ?: "Пользователь", color = LocalAppColors.current.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         Spacer(modifier = Modifier.weight(1f))
         Icon(Icons.Default.CheckCircle, null, tint = GradientStart, modifier = Modifier.size(16.dp))
     }

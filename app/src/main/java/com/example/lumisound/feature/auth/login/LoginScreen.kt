@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.auth.login
+﻿package com.example.lumisound.feature.auth.login
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -76,11 +76,9 @@ import com.example.lumisound.R
 import com.example.lumisound.feature.auth.components.GradientButton
 import com.example.lumisound.feature.auth.components.LabeledTextField
 import com.example.lumisound.ui.theme.ColorAccentSecondary
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
 import com.example.lumisound.ui.theme.LumiSoundTheme
 import com.example.lumisound.ui.theme.Typography
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun LoginScreen(
@@ -159,15 +157,13 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                brush = remember {
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            ColorBackground,
-                            Color(0xFF0A0B1A),
-                            ColorBackground
-                        )
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        LocalAppColors.current.background,
+                        Color(0xFF0A0B1A),
+                        LocalAppColors.current.background
                     )
-                }
+                )
             ),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Color.Transparent,
@@ -177,7 +173,7 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(ColorBackground)
+                .background(LocalAppColors.current.background)
         ) {
             Column(
                 modifier = Modifier
@@ -408,7 +404,7 @@ fun LoginScreen(
                 ) {
                     Text(
                         text = stringResource(R.string.no_account),
-                        color = ColorSecondary,
+                        color = LocalAppColors.current.secondary,
                         fontSize = 14.sp
                     )
                     Text(
@@ -429,10 +425,10 @@ fun LoginScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ColorBackground.copy(alpha = 0.7f)),
+                        .background(LocalAppColors.current.background.copy(alpha = 0.7f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = ColorSecondary)
+                    CircularProgressIndicator(color = LocalAppColors.current.secondary)
                 }
             }
         }

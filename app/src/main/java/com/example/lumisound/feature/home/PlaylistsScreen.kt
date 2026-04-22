@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.home
+﻿package com.example.lumisound.feature.home
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -36,6 +36,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.lumisound.data.remote.SupabaseService
 import com.example.lumisound.ui.theme.*
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun PlaylistsScreen(
@@ -51,7 +52,7 @@ fun PlaylistsScreen(
     }
 
     Box(
-        modifier = Modifier.fillMaxSize().background(ColorBackground).statusBarsPadding()
+        modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background).statusBarsPadding()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
@@ -64,9 +65,9 @@ fun PlaylistsScreen(
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.ArrowBack, "Back", tint = ColorOnBackground, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.ArrowBack, "Back", tint = LocalAppColors.current.onBackground, modifier = Modifier.size(18.dp))
                 }
-                Text("Мои плейлисты", color = ColorOnBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text("Мои плейлисты", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Box(
                     modifier = Modifier.size(36.dp).background(GradientStart.copy(alpha = 0.15f), CircleShape)
                         .border(1.dp, GradientStart.copy(alpha = 0.4f), CircleShape)
@@ -87,8 +88,8 @@ fun PlaylistsScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("🎵", fontSize = 40.sp)
-                        Text("Нет плейлистов", color = ColorOnBackground.copy(alpha = 0.5f), fontSize = 16.sp)
-                        Text("Нажмите + чтобы создать первый", color = ColorSecondary, fontSize = 13.sp)
+                        Text("Нет плейлистов", color = LocalAppColors.current.onBackground.copy(alpha = 0.5f), fontSize = 16.sp)
+                        Text("Нажмите + чтобы создать первый", color = LocalAppColors.current.secondary, fontSize = 13.sp)
                     }
                 }
             } else {
@@ -149,7 +150,7 @@ fun PlaylistGridCard(
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier.fillMaxWidth().background(ColorSurface, RoundedCornerShape(14.dp))
+        modifier = Modifier.fillMaxWidth().background(LocalAppColors.current.surface, RoundedCornerShape(14.dp))
             .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() }
     ) {
@@ -187,7 +188,7 @@ fun PlaylistGridCard(
                     Icon(
                         if (playlist.isPublic) Icons.Default.Public else Icons.Default.Lock,
                         null,
-                        tint = if (playlist.isPublic) GradientStart else ColorSecondary,
+                        tint = if (playlist.isPublic) GradientStart else LocalAppColors.current.secondary,
                         modifier = Modifier.size(12.dp)
                     )
                 }
@@ -201,11 +202,11 @@ fun PlaylistGridCard(
             }
         }
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(playlist.name, color = ColorOnBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(playlist.name, color = LocalAppColors.current.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("${playlist.trackCount} ${trackWord(playlist.trackCount)}", color = ColorSecondary, fontSize = 11.sp)
+                Text("${playlist.trackCount} ${trackWord(playlist.trackCount)}", color = LocalAppColors.current.secondary, fontSize = 11.sp)
                 if (playlist.isPublic) {
-                    Text("· ♥ ${playlist.likesCount}", color = ColorSecondary, fontSize = 11.sp)
+                    Text("· ♥ ${playlist.likesCount}", color = LocalAppColors.current.secondary, fontSize = 11.sp)
                 }
             }
         }
@@ -222,9 +223,9 @@ fun PlaylistGridCard(
                 }
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Отмена") } },
-            containerColor = ColorSurface,
-            titleContentColor = ColorOnBackground,
-            textContentColor = ColorSecondary
+            containerColor = LocalAppColors.current.surface,
+            titleContentColor = LocalAppColors.current.onBackground,
+            textContentColor = LocalAppColors.current.secondary
         )
     }
 }
@@ -241,7 +242,7 @@ fun CreatePlaylistDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Новый плейлист", color = ColorOnBackground) },
+        title = { Text("Новый плейлист", color = LocalAppColors.current.onBackground) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -253,11 +254,11 @@ fun CreatePlaylistDialog(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = GradientStart,
                         unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                        focusedTextColor = ColorOnBackground,
-                        unfocusedTextColor = ColorOnBackground,
+                        focusedTextColor = LocalAppColors.current.onBackground,
+                        unfocusedTextColor = LocalAppColors.current.onBackground,
                         cursorColor = GradientStart,
                         focusedLabelColor = GradientStart,
-                        unfocusedLabelColor = ColorSecondary
+                        unfocusedLabelColor = LocalAppColors.current.secondary
                     )
                 )
                 OutlinedTextField(
@@ -269,18 +270,18 @@ fun CreatePlaylistDialog(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = GradientStart,
                         unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                        focusedTextColor = ColorOnBackground,
-                        unfocusedTextColor = ColorOnBackground,
+                        focusedTextColor = LocalAppColors.current.onBackground,
+                        unfocusedTextColor = LocalAppColors.current.onBackground,
                         cursorColor = GradientStart,
                         focusedLabelColor = GradientStart,
-                        unfocusedLabelColor = ColorSecondary
+                        unfocusedLabelColor = LocalAppColors.current.secondary
                     )
                 )
                 // Переключатель публичности
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(ColorSurface, RoundedCornerShape(10.dp))
+                        .background(LocalAppColors.current.surface, RoundedCornerShape(10.dp))
                         .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { isPublic = !isPublic }
                         .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -291,14 +292,14 @@ fun CreatePlaylistDialog(
                         Icon(
                             if (isPublic) Icons.Default.Public else Icons.Default.Lock,
                             null,
-                            tint = if (isPublic) GradientStart else ColorSecondary,
+                            tint = if (isPublic) GradientStart else LocalAppColors.current.secondary,
                             modifier = Modifier.size(16.dp)
                         )
                         Column {
-                            Text(if (isPublic) "Открытый" else "Приватный", color = ColorOnBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text(if (isPublic) "Открытый" else "Приватный", color = LocalAppColors.current.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                             Text(
                                 if (isPublic) "Виден всем, можно лайкать" else "Только для вас",
-                                color = ColorSecondary, fontSize = 11.sp
+                                color = LocalAppColors.current.secondary, fontSize = 11.sp
                             )
                         }
                     }
@@ -308,7 +309,7 @@ fun CreatePlaylistDialog(
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = GradientStart,
-                            uncheckedThumbColor = ColorSecondary,
+                            uncheckedThumbColor = LocalAppColors.current.secondary,
                             uncheckedTrackColor = Color.White.copy(alpha = 0.1f)
                         )
                     )
@@ -325,11 +326,11 @@ fun CreatePlaylistDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Отмена", color = ColorSecondary) }
+            TextButton(onClick = onDismiss) { Text("Отмена", color = LocalAppColors.current.secondary) }
         },
-        containerColor = ColorSurface,
-        titleContentColor = ColorOnBackground,
-        textContentColor = ColorSecondary
+        containerColor = LocalAppColors.current.surface,
+        titleContentColor = LocalAppColors.current.onBackground,
+        textContentColor = LocalAppColors.current.secondary
     )
 }
 

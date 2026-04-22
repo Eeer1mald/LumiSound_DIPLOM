@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.auth.welcome
+﻿package com.example.lumisound.feature.auth.welcome
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -31,10 +31,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lumisound.R
 import com.example.lumisound.feature.auth.components.GradientButton
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun AuthWelcomeScreen(
@@ -44,7 +43,7 @@ fun AuthWelcomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ColorBackground)
+            .background(LocalAppColors.current.background)
             .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

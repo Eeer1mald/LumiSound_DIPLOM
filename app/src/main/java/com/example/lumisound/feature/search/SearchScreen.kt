@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.search
+﻿package com.example.lumisound.feature.search
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material3.CircularProgressIndicator
@@ -81,12 +83,9 @@ import com.example.lumisound.feature.home.TrackPreview
 import com.example.lumisound.feature.home.components.SearchField
 import com.example.lumisound.feature.nowplaying.PlayerViewModel
 import com.example.lumisound.feature.ratings.ReviewViewModel
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -104,7 +103,11 @@ fun SearchScreen(
     var isSearchFocused by rememberSaveable { mutableStateOf(false) }
     val searchResults by viewModel.searchResults.collectAsState()
     val artistResults by viewModel.artistResults.collectAsState()
+    val playlistResults by viewModel.playlistResults.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+
+    // Выбранный плейлист для открытия
+    var selectedPlaylist by remember { mutableStateOf<com.example.lumisound.data.remote.SupabaseService.PlaylistResponse?>(null) }
     val error by viewModel.error.collectAsState()
     val discoverFeed by viewModel.discoverFeed.collectAsState()
     val followingFeed by viewModel.followingFeed.collectAsState()
@@ -136,7 +139,7 @@ fun SearchScreen(
 
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
 
-    Box(modifier = Modifier.fillMaxSize().background(ColorBackground)) {
+    Box(modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background)) {
         // Фид всегда рендерится — не пересоздаётся при фокусе поиска
         FeedPager(
             discoverFeed = discoverFeed,
@@ -159,7 +162,7 @@ fun SearchScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(ColorBackground)
+                    .background(LocalAppColors.current.background)
                     .statusBarsPadding()
                     .padding(top = 72.dp)
             ) {
@@ -167,15 +170,16 @@ fun SearchScreen(
                     SearchResultsList(
                         results = searchResults,
                         artistResults = artistResults,
+                        playlistResults = playlistResults,
                         isLoading = isLoading,
                         error = error,
-                        playerStateHolder = playerStateHolder,
                         playerViewModel = playerViewModel,
-                        navController = navController
+                        navController = navController,
+                        onPlaylistClick = { selectedPlaylist = it }
                     )
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        androidx.compose.material3.Text("Начните вводить запрос", color = ColorSecondary, fontSize = 14.sp)
+                        androidx.compose.material3.Text("Начните вводить запрос", color = LocalAppColors.current.secondary, fontSize = 14.sp)
                     }
                 }
             }
@@ -188,7 +192,7 @@ fun SearchScreen(
                 .align(Alignment.TopCenter)
                 .then(
                     if (isSearchFocused)
-                        Modifier.background(ColorBackground)
+                        Modifier.background(LocalAppColors.current.background)
                     else
                         Modifier.background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)))
                 )
@@ -222,6 +226,22 @@ fun SearchScreen(
                 }
             }
         }
+
+        // Overlay для открытия плейлиста
+        selectedPlaylist?.let { pl ->
+            androidx.compose.animation.AnimatedVisibility(
+                visible = true,
+                enter = androidx.compose.animation.slideInVertically { it },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                com.example.lumisound.feature.home.PlaylistDetailScreen(
+                    playlist = pl,
+                    onClose = { selectedPlaylist = null },
+                    onDeleted = { selectedPlaylist = null },
+                    navController = navController
+                )
+            }
+        }
     }
 }
 
@@ -252,7 +272,7 @@ private fun FeedPager(
                 val feed = if (page == 0) discoverFeed else followingFeed
 
                 if (feed.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize().background(ColorBackground), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(36.dp))
                     }
                 } else {
@@ -388,7 +408,7 @@ private fun TikTokTrackCard(
                 contentScale = ContentScale.Crop
             )
         } else {
-            Box(modifier = Modifier.fillMaxSize().background(ColorSurface), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxSize().background(LocalAppColors.current.surface), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.MusicNote, null, tint = GradientStart.copy(alpha = 0.3f), modifier = Modifier.size(80.dp))
             }
         }
@@ -655,7 +675,7 @@ private fun TrackStatsSheet(
             .padding(horizontal = 20.dp, vertical = 16.dp)
             .padding(bottom = bottomBarPadding)
             .pointerInput(Unit) {
-                detectVerticalDragGestures(
+                detectVerticalDragGestures( 
                     onDragEnd = {
                         if (dragOffset > 120f) onDismiss() else dragOffset = 0f
                     },
@@ -672,7 +692,7 @@ private fun TrackStatsSheet(
         Spacer(modifier = Modifier.height(16.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Средние показатели", color = ColorOnBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text("Средние показатели", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 val ratingCount = state.averageRating?.ratingCount ?: 0
                 if (ratingCount > 0) {
                     Text(
@@ -682,7 +702,7 @@ private fun TrackStatsSheet(
                             ratingCount % 10 in 2..4 -> "оценки"
                             else -> "оценок"
                         }}",
-                        color = ColorSecondary,
+                        color = LocalAppColors.current.secondary,
                         fontSize = 12.sp
                     )
                 }
@@ -703,11 +723,11 @@ private fun TrackStatsSheet(
         )
         criteria.forEach { (label, score) ->
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(label, color = ColorSecondary, fontSize = 12.sp, modifier = Modifier.width(130.dp))
+                Text(label, color = LocalAppColors.current.secondary, fontSize = 12.sp, modifier = Modifier.width(130.dp))
                 Box(modifier = Modifier.weight(1f).height(4.dp).background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(2.dp))) {
                     if (score != null) Box(modifier = Modifier.fillMaxWidth((score / 10.0).toFloat().coerceIn(0f, 1f)).height(4.dp).background(GradientStart, RoundedCornerShape(2.dp)))
                 }
-                Text(score?.let { String.format("%.1f", it) } ?: "—", color = if (score != null) GradientStart else ColorSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(score?.let { String.format("%.1f", it) } ?: "—", color = if (score != null) GradientStart else LocalAppColors.current.secondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -722,6 +742,7 @@ private fun CommentsPreviewSheet(
     bottomBarPadding: androidx.compose.ui.unit.Dp = 0.dp,
     onDismiss: () -> Unit
 ) {
+    val playerStateHolder = getPlayerStateHolder()
     var dragOffset by remember { mutableStateOf(0f) }
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -746,28 +767,29 @@ private fun CommentsPreviewSheet(
         Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
         Spacer(modifier = Modifier.height(12.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Комментарии (${state.comments.size})", color = ColorOnBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text("Комментарии (${state.comments.size})", color = LocalAppColors.current.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Text("Все →", color = GradientStart, fontSize = 13.sp, modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                 onDismiss()
-                navController.navigate(com.example.lumisound.navigation.MainDestination.Review().createRoute(track.id))
+                playerStateHolder.setReviewTrack(track)
+                navController.navigate(com.example.lumisound.navigation.MainDestination.Review().createRoute(track.id, track.name, track.artist))
             })
         }
         Spacer(modifier = Modifier.height(12.dp))
         if (state.comments.isEmpty()) {
-            Text("Нет комментариев", color = ColorSecondary, fontSize = 14.sp, modifier = Modifier.padding(vertical = 8.dp))
+            Text("Нет комментариев", color = LocalAppColors.current.secondary, fontSize = 14.sp, modifier = Modifier.padding(vertical = 8.dp))
         } else {
             state.comments.take(3).forEach { comment ->
                 Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(ColorSurface), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(LocalAppColors.current.surface), contentAlignment = Alignment.Center) {
                         if (!comment.userAvatarUrl.isNullOrEmpty()) {
                             AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(comment.userAvatarUrl).crossfade(false).build(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                         } else {
-                            Icon(Icons.Default.MusicNote, null, tint = ColorSecondary, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.MusicNote, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(14.dp))
                         }
                     }
                     Column {
-                        Text(comment.username ?: "Пользователь", color = ColorSecondary, fontSize = 11.sp)
-                        Text(comment.comment, color = ColorOnBackground, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(comment.username ?: "Пользователь", color = LocalAppColors.current.secondary, fontSize = 11.sp)
+                        Text(comment.comment, color = LocalAppColors.current.onBackground, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -784,6 +806,7 @@ private fun ReviewsPreviewSheet(
     onDismiss: () -> Unit
 ) {
     val reviews = state.reviews.filter { !it.review.isNullOrBlank() }
+    val playerStateHolder = getPlayerStateHolder()
     var dragOffset by remember { mutableStateOf(0f) }
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -808,15 +831,16 @@ private fun ReviewsPreviewSheet(
         Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
         Spacer(modifier = Modifier.height(12.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Рецензии (${reviews.size})", color = ColorOnBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text("Рецензии (${reviews.size})", color = LocalAppColors.current.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Text("Все →", color = GradientStart, fontSize = 13.sp, modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                 onDismiss()
-                navController.navigate(com.example.lumisound.navigation.MainDestination.Reviews().createRoute(track.id))
+                playerStateHolder.setReviewTrack(track)
+                navController.navigate(com.example.lumisound.navigation.MainDestination.Reviews().createRoute(track.id, track.name, track.artist))
             })
         }
         Spacer(modifier = Modifier.height(12.dp))
         if (reviews.isEmpty()) {
-            Text("Нет рецензий", color = ColorSecondary, fontSize = 14.sp, modifier = Modifier.padding(vertical = 8.dp))
+            Text("Нет рецензий", color = LocalAppColors.current.secondary, fontSize = 14.sp, modifier = Modifier.padding(vertical = 8.dp))
         } else {
             reviews.take(2).forEach { rating ->
                 Row(
@@ -825,7 +849,7 @@ private fun ReviewsPreviewSheet(
                 ) {
                     // Аватар
                     Box(
-                        modifier = Modifier.size(30.dp).clip(CircleShape).background(ColorSurface),
+                        modifier = Modifier.size(30.dp).clip(CircleShape).background(LocalAppColors.current.surface),
                         contentAlignment = Alignment.Center
                     ) {
                         if (!rating.userAvatarUrl.isNullOrEmpty()) {
@@ -834,14 +858,14 @@ private fun ReviewsPreviewSheet(
                                 contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
                             )
                         } else {
-                            Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(15.dp))
+                            Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(15.dp))
                         }
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
                                 rating.username?.takeIf { it.isNotBlank() } ?: "Пользователь",
-                                color = ColorSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                                color = LocalAppColors.current.secondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
                             )
                             rating.overallScore?.let { score ->
                                 Box(
@@ -853,7 +877,7 @@ private fun ReviewsPreviewSheet(
                                 }
                             }
                         }
-                        Text(rating.review ?: "", color = ColorOnBackground, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                        Text(rating.review ?: "", color = LocalAppColors.current.onBackground, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                     }
                 }
             }
@@ -865,18 +889,19 @@ private fun ReviewsPreviewSheet(
 private fun SearchResultsList(
     results: List<Track>,
     artistResults: List<com.example.lumisound.data.remote.AudiusArtistFull>,
+    playlistResults: List<com.example.lumisound.data.remote.SupabaseService.PlaylistResponse> = emptyList(),
     isLoading: Boolean,
     error: String?,
-    playerStateHolder: com.example.lumisound.data.player.PlayerStateHolder,
     playerViewModel: PlayerViewModel,
-    navController: NavHostController
+    navController: NavHostController,
+    onPlaylistClick: (com.example.lumisound.data.remote.SupabaseService.PlaylistResponse) -> Unit = {}
 ) {
     when {
         isLoading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = GradientStart) }
-        error != null -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(error, color = ColorSecondary, fontSize = 14.sp) }
-        results.isEmpty() && artistResults.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Ничего не найдено", color = ColorSecondary, fontSize = 14.sp) }
+        error != null -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(error, color = LocalAppColors.current.secondary, fontSize = 14.sp) }
+        results.isEmpty() && artistResults.isEmpty() && playlistResults.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Ничего не найдено", color = LocalAppColors.current.secondary, fontSize = 14.sp) }
         else -> LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Показываем только 1 артиста сверху — только если имя сильно совпадает
+            // Артист
             val topArtist = artistResults.firstOrNull()
             if (topArtist != null) {
                 item(key = "artist_${topArtist.id}") {
@@ -891,10 +916,26 @@ private fun SearchResultsList(
                     })
                 }
             }
+            // Плейлисты — горизонтальный ряд квадратных карточек
+            if (playlistResults.isNotEmpty()) {
+                item(key = "playlists_row") {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        items(playlistResults, key = { it.id }) { playlist ->
+                            PlaylistSearchCard(
+                                playlist = playlist,
+                                onClick = { onPlaylistClick(playlist) }
+                            )
+                        }
+                    }
+                }
+            }
+            // Треки
             itemsIndexed(results, key = { _, t -> t.id }) { index, track ->
                 SearchResultItem(track = track, onClick = {
-                    playerStateHolder.setPlaylist(results, index)
-                    playerViewModel.playTrack(track)
+                    playerViewModel.playPlaylist(results, index)
                 })
             }
         }
@@ -911,7 +952,7 @@ private fun ArtistSearchCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(ColorSurface, RoundedCornerShape(14.dp))
+            .background(LocalAppColors.current.surface, RoundedCornerShape(14.dp))
             .border(1.dp, GradientStart.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onArtistClick() }
             .padding(12.dp),
@@ -934,7 +975,7 @@ private fun ArtistSearchCard(
                 )
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Person, null, tint = ColorSecondary, modifier = Modifier.size(26.dp))
+                    Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(26.dp))
                 }
             }
         }
@@ -944,7 +985,7 @@ private fun ArtistSearchCard(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(
                     artist.name,
-                    color = ColorOnBackground,
+                    color = LocalAppColors.current.onBackground,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -959,7 +1000,7 @@ private fun ArtistSearchCard(
                 if (!artist.location.isNullOrBlank() && (artist.followerCount ?: 0) > 0) append(" · ")
                 if ((artist.followerCount ?: 0) > 0) append(formatFollowers(artist.followerCount!!))
             }
-            if (sub.isNotBlank()) Text(sub, color = ColorSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (sub.isNotBlank()) Text(sub, color = LocalAppColors.current.secondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
         // Иконка артиста справа
@@ -984,26 +1025,129 @@ private fun formatFollowers(count: Int): String = when {
 private fun SearchResultItem(track: Track, onClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth()
-            .background(ColorSurface, RoundedCornerShape(14.dp))
+            .background(LocalAppColors.current.surface, RoundedCornerShape(14.dp))
             .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() }
             .padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.06f))) {
+        // Обложка — чуть крупнее чтобы влезла третья строка
+        Box(modifier = Modifier.size(62.dp).clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.06f))) {
             if (!track.imageUrl.isNullOrEmpty()) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current).data(track.imageUrl).crossfade(false).build(),
                     contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
                 )
             } else {
-                Icon(Icons.Default.MusicNote, null, tint = ColorSecondary.copy(alpha = 0.5f), modifier = Modifier.size(24.dp).align(Alignment.Center))
+                Icon(Icons.Default.MusicNote, null, tint = LocalAppColors.current.secondary.copy(alpha = 0.5f), modifier = Modifier.size(28.dp).align(Alignment.Center))
             }
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(track.name, color = ColorOnBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(track.artist, color = ColorSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(track.name, color = LocalAppColors.current.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(track.artist, color = LocalAppColors.current.secondary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // Третья строка: прослушивания и длина — только если данные есть
+            val hasStats = (track.playCount ?: 0) > 0 || (track.duration ?: 0) > 0
+            if (hasStats) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if ((track.playCount ?: 0) > 0) {
+                        Icon(
+                            Icons.Default.PlayArrow, null,
+                            tint = LocalAppColors.current.secondary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            formatPlayCount(track.playCount!!),
+                            color = LocalAppColors.current.secondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                    if ((track.playCount ?: 0) > 0 && (track.duration ?: 0) > 0) {
+                        Text("·", color = LocalAppColors.current.secondary, fontSize = 11.sp)
+                    }
+                    if ((track.duration ?: 0) > 0) {
+                        Text(
+                            formatDuration(track.duration!!),
+                            color = LocalAppColors.current.secondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatPlayCount(count: Int): String = when {
+    count >= 1_000_000 -> "${String.format("%.1f", count / 1_000_000.0).trimEnd('0').trimEnd('.')}M"
+    count >= 1_000 -> "${String.format("%.1f", count / 1_000.0).trimEnd('0').trimEnd('.')}K"
+    else -> count.toString()
+}
+
+private fun formatDuration(seconds: Int): String {
+    val m = seconds / 60
+    val s = seconds % 60
+    return "$m:${s.toString().padStart(2, '0')}"
+}
+
+@Composable
+private fun PlaylistSearchCard(
+    playlist: com.example.lumisound.data.remote.SupabaseService.PlaylistResponse,
+    onClick: () -> Unit = {}
+) {
+    Column(
+        modifier = Modifier
+            .width(130.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onClick() },
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(130.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(LocalAppColors.current.surface),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!playlist.coverUrl.isNullOrEmpty()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(playlist.coverUrl)
+                        .crossfade(false)
+                        .build(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    Icons.Default.MusicNote, null,
+                    tint = LocalAppColors.current.secondary.copy(alpha = 0.4f),
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+        }
+        Text(
+            text = playlist.name,
+            color = LocalAppColors.current.onBackground,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (!playlist.username.isNullOrEmpty()) {
+            Text(
+                text = playlist.username,
+                color = LocalAppColors.current.secondary,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

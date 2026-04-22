@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.auth.profilesetup
+﻿package com.example.lumisound.feature.auth.profilesetup
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -59,11 +59,9 @@ import com.example.lumisound.R
 import com.example.lumisound.feature.auth.components.GradientButton
 import com.example.lumisound.feature.auth.components.LabeledTextField
 import com.example.lumisound.ui.theme.ColorAccentSecondary
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun ProfileSetupScreen(
@@ -113,13 +111,13 @@ fun ProfileSetupScreen(
     androidx.compose.material3.Scaffold(
         modifier = Modifier.fillMaxSize(),
         snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) },
-        containerColor = ColorBackground
+        containerColor = LocalAppColors.current.background
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(ColorBackground)
+                .background(LocalAppColors.current.background)
         ) {
             Column(
                 modifier = Modifier
@@ -158,7 +156,7 @@ fun ProfileSetupScreen(
                                 )
                                 .border(
                                     width = 4.dp,
-                                    color = ColorBackground,
+                                    color = LocalAppColors.current.background,
                                     shape = CircleShape
                                 )
                         ) {
@@ -199,7 +197,7 @@ fun ProfileSetupScreen(
                                 )
                                 .border(
                                     width = 3.dp,
-                                    color = ColorBackground,
+                                    color = LocalAppColors.current.background,
                                     shape = CircleShape
                                 )
                                 .clickable { imagePicker.launch("image/*") },
@@ -231,14 +229,14 @@ fun ProfileSetupScreen(
                     ) {
                         Text(
                             text = "Расскажите о себе",
-                            color = ColorOnBackground,
+                            color = LocalAppColors.current.onBackground,
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Заполните данные для завершения регистрации",
-                            color = ColorSecondary,
+                            color = LocalAppColors.current.secondary,
                             fontSize = 14.sp
                         )
                     }
@@ -335,10 +333,10 @@ fun ProfileSetupScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ColorBackground.copy(alpha = 0.7f)),
+                        .background(LocalAppColors.current.background.copy(alpha = 0.7f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = ColorSecondary)
+                    CircularProgressIndicator(color = LocalAppColors.current.secondary)
                 }
             }
         }

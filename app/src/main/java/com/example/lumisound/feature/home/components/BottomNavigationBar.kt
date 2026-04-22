@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.home.components
+﻿package com.example.lumisound.feature.home.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,9 +26,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import com.example.lumisound.ui.theme.ColorSecondary
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 typealias NavItem = String
 
@@ -127,7 +127,7 @@ private fun NavBarItem(
                 Icon(
                     imageVector = item.icon,
                     contentDescription = item.label,
-                    tint = ColorSecondary,
+                    tint = LocalAppColors.current.secondary,
                     modifier = Modifier.size(22.dp)
                 )
             }

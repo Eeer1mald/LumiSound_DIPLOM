@@ -9,7 +9,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.example.lumisound.data.remote.AudiusArtistFull
 import com.example.lumisound.data.model.Track
+import com.example.lumisound.data.remote.SupabaseService
+import com.example.lumisound.data.repository.AuthRepository
 import com.example.lumisound.data.repository.MusicRepository
+import com.example.lumisound.data.local.SessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +24,8 @@ import javax.inject.Inject
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
+    private val authRepository: AuthRepository,
+    private val sessionManager: SessionManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -38,6 +43,9 @@ class SearchViewModel @Inject constructor(
 
     private val _artistResults = MutableStateFlow<List<AudiusArtistFull>>(emptyList())
     val artistResults: StateFlow<List<AudiusArtistFull>> = _artistResults.asStateFlow()
+
+    private val _playlistResults = MutableStateFlow<List<SupabaseService.PlaylistResponse>>(emptyList())
+    val playlistResults: StateFlow<List<SupabaseService.PlaylistResponse>> = _playlistResults.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -203,13 +211,14 @@ class SearchViewModel @Inject constructor(
         if (query.isBlank()) {
             _searchResults.value = emptyList()
             _artistResults.value = emptyList()
+            _playlistResults.value = emptyList()
             _error.value = null
             return
         }
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
-            // Параллельный поиск треков и артистов
+            // Параллельный поиск треков, артистов и плейлистов
             launch {
                 musicRepository.searchArtists(query, limit = 5)
                     .onSuccess { artists ->
@@ -221,6 +230,10 @@ class SearchViewModel @Inject constructor(
                         _artistResults.value = if (match != null) listOf(match) else emptyList()
                     }
                     .onFailure { _artistResults.value = emptyList() }
+            }
+            launch {
+                authRepository.searchPublicPlaylists(query, limit = 8)
+                    .let { _playlistResults.value = it }
             }
             musicRepository.searchTracks(query, limit = 20)
                 .onSuccess { tracks ->

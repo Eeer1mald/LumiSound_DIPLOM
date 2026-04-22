@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.nowplaying
+﻿package com.example.lumisound.feature.nowplaying
 
 import android.app.Activity
 import androidx.compose.animation.core.animateFloatAsState
@@ -68,11 +68,9 @@ import coil.request.ImageRequest
 import com.example.lumisound.data.model.Track
 import com.example.lumisound.feature.home.components.BottomNavigationBar
 import com.example.lumisound.ui.theme.ColorAccentSecondary
-import com.example.lumisound.ui.theme.ColorBackground
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 fun formatTime(milliseconds: Long): String {
     val totalSeconds = (milliseconds / 1000).toInt()
@@ -135,12 +133,13 @@ fun NowPlayingScreen(
     }
 
     // Оптимизация: используем remember для градиента и scrollState
-    val backgroundGradient = remember {
+    val bgColor = LocalAppColors.current.background
+    val backgroundGradient = remember(bgColor) {
         Brush.verticalGradient(
             colors = listOf(
                 Color(0xFF1A1B2E),
-                ColorBackground,
-                ColorBackground
+                bgColor,
+                bgColor
             )
         )
     }
@@ -170,13 +169,13 @@ fun NowPlayingScreen(
                     Icon(
                         imageVector = Icons.Default.ArrowDownward,
                         contentDescription = "Close",
-                        tint = ColorOnBackground,
+                        tint = LocalAppColors.current.onBackground,
                         modifier = Modifier.size(24.dp)
                     )
                 }
                 Text(
                     text = "Сейчас играет",
-                    color = ColorSecondary,
+                    color = LocalAppColors.current.secondary,
                     fontSize = 14.sp
                 )
                 Spacer(modifier = Modifier.size(48.dp))
@@ -239,7 +238,7 @@ fun NowPlayingScreen(
                     Brush.verticalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            ColorBackground.copy(alpha = 0.4f)
+                            Color.Black.copy(alpha = 0.4f)
                         )
                     )
                 }
@@ -260,14 +259,14 @@ fun NowPlayingScreen(
             ) {
                 Text(
                     text = track.name,
-                    color = ColorOnBackground,
+                    color = LocalAppColors.current.onBackground,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
                 Text(
                     text = track.artist,
-                    color = ColorSecondary,
+                    color = LocalAppColors.current.secondary,
                     fontSize = 16.sp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.clickable {
@@ -316,12 +315,12 @@ fun NowPlayingScreen(
                 ) {
                     Text(
                         text = formatTime(currentPosition),
-                        color = ColorSecondary,
+                        color = LocalAppColors.current.secondary,
                         fontSize = 12.sp
                     )
                     Text(
                         text = formatTime(duration),
-                        color = ColorSecondary,
+                        color = LocalAppColors.current.secondary,
                         fontSize = 12.sp
                     )
                 }
@@ -344,7 +343,7 @@ fun NowPlayingScreen(
                     Icon(
                         imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = "Like",
-                        tint = if (isLiked) ColorAccentSecondary else ColorSecondary,
+                        tint = if (isLiked) ColorAccentSecondary else LocalAppColors.current.secondary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -358,7 +357,7 @@ fun NowPlayingScreen(
                     Icon(
                         imageVector = Icons.Default.SkipPrevious,
                         contentDescription = "Previous",
-                        tint = ColorOnBackground,
+                        tint = LocalAppColors.current.onBackground,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -405,7 +404,7 @@ fun NowPlayingScreen(
                     Icon(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next",
-                        tint = ColorOnBackground,
+                        tint = LocalAppColors.current.onBackground,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -419,7 +418,7 @@ fun NowPlayingScreen(
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add to playlist",
-                        tint = ColorSecondary,
+                        tint = LocalAppColors.current.secondary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -457,13 +456,13 @@ fun NowPlayingScreen(
                 ) {
                     Text(
                         text = "Оцените этот трек",
-                        color = ColorOnBackground,
+                        color = LocalAppColors.current.onBackground,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
                         text = "Это поможет нам подбирать музыку для вас",
-                        color = ColorSecondary,
+                        color = LocalAppColors.current.secondary,
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center
                     )
@@ -509,7 +508,7 @@ fun NowPlayingScreen(
                             ) {
                                 Text(
                                     text = "$rating",
-                                    color = if (shouldHighlight) Color.White else ColorSecondary,
+                                    color = if (shouldHighlight) Color.White else LocalAppColors.current.secondary,
                                     fontSize = 14.sp,
                                     fontWeight = if (shouldHighlight) FontWeight.Bold else FontWeight.Normal
                                 )

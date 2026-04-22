@@ -25,7 +25,6 @@ fun ScreenContent(
             HomeScreen(
                 navController = navController,
                 userName = userName,
-                synthesisInviteCode = synthesisInviteCode,
                 creatorAvatarUrl = realAvatarUrl
             )
         }
@@ -108,17 +107,23 @@ fun ScreenContent(
                 }
             }
             val onTrackClick = remember(playerViewModel) {
-                { trackId: String, title: String, artist: String, coverUrl: String?, previewUrl: String? ->
-                    if (!previewUrl.isNullOrBlank()) {
-                        playerViewModel.playTrack(
-                            com.example.lumisound.data.model.Track(
-                                id = trackId,
-                                name = title,
-                                artist = artist,
-                                imageUrl = coverUrl,
-                                previewUrl = previewUrl
-                            )
+                { tracks: List<com.example.lumisound.feature.profile.FavoriteTrack>, index: Int ->
+                    val modelTracks = tracks.map { t ->
+                        com.example.lumisound.data.model.Track(
+                            id = t.trackId,
+                            name = t.title,
+                            artist = t.artist,
+                            imageUrl = t.coverUrl,
+                            previewUrl = t.previewUrl
                         )
+                    }.filter { !it.previewUrl.isNullOrBlank() }
+                    if (modelTracks.isNotEmpty()) {
+                        // Найти правильный индекс после фильтрации
+                        val clickedTrack = tracks.getOrNull(index)
+                        val filteredIndex = if (clickedTrack != null)
+                            modelTracks.indexOfFirst { it.id == clickedTrack.trackId }.coerceAtLeast(0)
+                        else 0
+                        playerViewModel.playPlaylist(modelTracks, filteredIndex)
                     }
                 }
             }

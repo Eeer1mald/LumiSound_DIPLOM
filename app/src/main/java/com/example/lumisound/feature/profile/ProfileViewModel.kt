@@ -76,8 +76,10 @@ class ProfileViewModel @Inject constructor(
     fun loadProfile() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            val accessToken = sessionManager.getAccessToken()
-            
+            // Обновляем токен если истёк
+            val accessToken = authRepository.refreshTokenIfNeeded()
+                ?: sessionManager.getAccessToken()
+
             if (accessToken != null) {
                 authRepository.getProfile(accessToken)
                     .onSuccess { profile ->
@@ -89,17 +91,13 @@ class ProfileViewModel @Inject constructor(
                                 favoriteGenre = profile.favoriteGenre,
                                 isLoading = false
                             )
-                            // Загружаем аватар если есть URL из Supabase
                             profile.avatarUrl?.let { url ->
                                 try {
-                                    android.util.Log.d("ProfileViewModel", "Загружаем аватар из URL: $url")
                                     _avatarUri.value = Uri.parse(url)
                                 } catch (e: Exception) {
-                                    android.util.Log.e("ProfileViewModel", "Ошибка парсинга URL аватара: ${e.message}")
                                     _avatarUri.value = null
                                 }
                             } ?: run {
-                                // Если нет URL, очищаем локальный URI
                                 _avatarUri.value = null
                             }
                         } else {
@@ -110,10 +108,46 @@ class ProfileViewModel @Inject constructor(
                         }
                     }
                     .onFailure { exception ->
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = exception.message ?: "Ошибка загрузки профиля"
-                        )
+                        // Если ошибка авторизации — ждём и повторяем (race condition с обновлением токена)
+                        val isAuthError = exception.message?.contains("401") == true ||
+                            exception.message?.contains("авторизован") == true ||
+                            exception.message?.contains("token") == true
+                        if (isAuthError) {
+                            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+                            kotlinx.coroutines.delay(2000) // ждём обновления токена
+                            val retryToken = authRepository.refreshTokenIfNeeded()
+                                ?: sessionManager.getAccessToken()
+                            if (retryToken != null) {
+                                authRepository.getProfile(retryToken)
+                                    .onSuccess { profile ->
+                                        if (profile != null) {
+                                            _uiState.value = _uiState.value.copy(
+                                                username = profile.username,
+                                                bio = profile.bio,
+                                                avatarUrl = profile.avatarUrl,
+                                                favoriteGenre = profile.favoriteGenre,
+                                                isLoading = false
+                                            )
+                                            profile.avatarUrl?.let { url ->
+                                                try { _avatarUri.value = Uri.parse(url) }
+                                                catch (e: Exception) { _avatarUri.value = null }
+                                            } ?: run { _avatarUri.value = null }
+                                        } else {
+                                            _uiState.value = _uiState.value.copy(isLoading = false)
+                                        }
+                                    }
+                                    .onFailure {
+                                        _uiState.value = _uiState.value.copy(isLoading = false, error = null)
+                                    }
+                            } else {
+                                _uiState.value = _uiState.value.copy(isLoading = false)
+                            }
+                        } else {
+                            _uiState.value = _uiState.value.copy(
+                                isLoading = false,
+                                error = exception.message ?: "Ошибка загрузки профиля"
+                            )
+                        }
                     }
             } else {
                 _uiState.value = _uiState.value.copy(
@@ -126,7 +160,8 @@ class ProfileViewModel @Inject constructor(
     
     fun loadFavoriteTracks() {
         viewModelScope.launch {
-            val accessToken = sessionManager.getAccessToken()
+            val accessToken = authRepository.refreshTokenIfNeeded()
+                ?: sessionManager.getAccessToken()
             if (accessToken != null) {
                 // Загружаем топ-10 треков по количеству прослушиваний
                 authRepository.getFavoriteTracks(accessToken, limit = 10, orderByPlayCount = true)
@@ -154,7 +189,8 @@ class ProfileViewModel @Inject constructor(
     
     fun loadFavoriteArtists() {
         viewModelScope.launch {
-            val accessToken = sessionManager.getAccessToken()
+            val accessToken = authRepository.refreshTokenIfNeeded()
+                ?: sessionManager.getAccessToken()
             if (accessToken != null) {
                 // Загружаем топ-10 артистов по количеству прослушиваний
                 authRepository.getFavoriteArtists(accessToken, limit = 10)
@@ -179,8 +215,9 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun loadCounters() {
-        val token = sessionManager.getAccessToken() ?: return
         viewModelScope.launch {
+            val token = authRepository.refreshTokenIfNeeded()
+                ?: sessionManager.getAccessToken() ?: return@launch
             val comments = authRepository.getMyComments(token, limit = 200)
             val ratings = authRepository.getMyRatings(token, limit = 200)
             _uiState.value = _uiState.value.copy(

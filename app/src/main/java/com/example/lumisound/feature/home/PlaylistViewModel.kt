@@ -9,6 +9,7 @@ import com.example.lumisound.feature.playlist.PlaylistEvent
 import com.example.lumisound.feature.playlist.PlaylistEventBus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -65,11 +66,22 @@ class PlaylistViewModel @Inject constructor(
                 }
             }
         }
+        // Retry через 3 секунды — на случай если токен ещё обновлялся при старте
+        viewModelScope.launch {
+            delay(3000)
+            if (_state.value.myPlaylists.isEmpty() && _state.value.recentTracks.isEmpty()) {
+                val token = authRepository.refreshTokenIfNeeded()
+                if (token != null) loadAll()
+            }
+        }
     }
 
     fun loadAll() {
-        val token = sessionManager.getAccessToken() ?: return
         viewModelScope.launch {
+            // Сначала обновляем токен если нужно, потом грузим данные
+            val token = authRepository.refreshTokenIfNeeded()
+                ?: sessionManager.getAccessToken()
+                ?: return@launch
             _state.value = _state.value.copy(isLoading = true)
 
             val myJob = async { authRepository.getMyPlaylists(token) }
@@ -144,8 +156,10 @@ class PlaylistViewModel @Inject constructor(
 
     /** Быстрое обновление только списка моих плейлистов с обогащением обложками */
     private fun refreshMyPlaylists() {
-        val token = sessionManager.getAccessToken() ?: return
         viewModelScope.launch {
+            val token = authRepository.refreshTokenIfNeeded()
+                ?: sessionManager.getAccessToken()
+                ?: return@launch
             val playlists = authRepository.getMyPlaylists(token)
             val enriched = enrichWithTrackCovers(token, playlists)
             _state.value = _state.value.copy(myPlaylists = enriched)

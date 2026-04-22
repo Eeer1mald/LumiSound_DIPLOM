@@ -1,4 +1,4 @@
-package com.example.lumisound.navigation
+﻿package com.example.lumisound.navigation
 
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -33,7 +33,7 @@ import com.example.lumisound.feature.home.components.BottomNavigationBar
 import com.example.lumisound.feature.home.components.MiniPlayer
 import com.example.lumisound.feature.nowplaying.PlayerViewModel
 import com.example.lumisound.feature.search.PlayerStateHolderEntryPoint
-import com.example.lumisound.ui.theme.ColorBackground
+import com.example.lumisound.ui.theme.LocalAppColors
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -118,7 +118,7 @@ fun SwipeableNavHost(
     val animationProgress = if (isDraggingMiniPlayer) rawAnimationProgress else animatedProgress
 
     Box(
-        modifier = Modifier.fillMaxSize().background(ColorBackground)
+        modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background)
     ) {
         HorizontalPager(
             state = pagerState,
@@ -129,7 +129,7 @@ fun SwipeableNavHost(
             key = { page -> routes[page] }
         ) { page ->
             val route = remember(page) { routes[page] }
-            Box(modifier = Modifier.fillMaxSize().background(ColorBackground)) {
+            Box(modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background)) {
                 ScreenContent(
                     route = route,
                     navController = navController,
@@ -150,7 +150,7 @@ fun SwipeableNavHost(
             pagerState = pagerState,
             scope = scope,
             animationProgress = animationProgress,
-            rawAnimationProgress = rawAnimationProgress,
+            getRawProgress = { rawAnimationProgress },
             isDraggingMiniPlayer = isDraggingMiniPlayer,
             onRawProgressChange = { rawAnimationProgress = it },
             onDraggingChange = { isDraggingMiniPlayer = it },
@@ -173,7 +173,7 @@ private fun BottomPlayerBar(
     pagerState: androidx.compose.foundation.pager.PagerState,
     scope: kotlinx.coroutines.CoroutineScope,
     animationProgress: Float,
-    rawAnimationProgress: Float,
+    getRawProgress: () -> Float,
     isDraggingMiniPlayer: Boolean,
     onRawProgressChange: (Float) -> Unit,
     onDraggingChange: (Boolean) -> Unit,
@@ -193,7 +193,7 @@ private fun BottomPlayerBar(
                 navController = navController,
                 localCurrentRoute = localCurrentRoute,
                 animationProgress = animationProgress,
-                rawAnimationProgress = rawAnimationProgress,
+                getRawProgress = getRawProgress,
                 isDraggingMiniPlayer = isDraggingMiniPlayer,
                 isLiked = isLiked,
                 onLikedChange = { isLiked = it },
@@ -227,7 +227,7 @@ private fun MiniPlayerWrapper(
     navController: NavHostController,
     localCurrentRoute: String,
     animationProgress: Float,
-    rawAnimationProgress: Float,
+    getRawProgress: () -> Float,
     isDraggingMiniPlayer: Boolean,
     isLiked: Boolean,
     onLikedChange: (Boolean) -> Unit,
@@ -243,6 +243,12 @@ private fun MiniPlayerWrapper(
     val duration by playerViewModel.duration.collectAsState()
     val avgScore by playerViewModel.avgScore.collectAsState()
     val miniProgress = if (duration > 0) (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
+
+    // Соседние треки для отображения при свайпе
+    val playlist by playerViewModel.playerStateHolder.playlist.collectAsState()
+    val currentIdx by playerViewModel.playerStateHolder.currentIndex.collectAsState()
+    val miniPrevTrack = playlist.getOrNull(currentIdx - 1)
+    val miniNextTrack = playlist.getOrNull(currentIdx + 1)
 
     MiniPlayer(
         currentTrack = currentTrack,
@@ -260,6 +266,11 @@ private fun MiniPlayerWrapper(
         onArtistClick = { artistId, artistName, artistImageUrl ->
             navController.navigate(MainDestination.Artist().createRoute(artistId, artistName, artistImageUrl))
         },
+        onNextTrack = { playerViewModel.nextTrack() },
+        onPreviousTrack = { playerViewModel.previousTrack() },
+        hasPrevious = playerViewModel.hasPrevious,
+        nextTrackInfo = miniNextTrack,
+        prevTrackInfo = miniPrevTrack,
         isLiked = isLiked,
         avgScore = avgScore,
         animationProgress = animationProgress,
@@ -267,39 +278,20 @@ private fun MiniPlayerWrapper(
         onDragStart = { onDraggingChange(true); onVelocityChange(0f) },
         onDragVelocityChange = { onVelocityChange(it) },
         onDragEnd = {
-            val currentProgress = rawAnimationProgress
+            val currentProgress = getRawProgress()
             val velocity = getLastVelocity()
             onDraggingChange(false)
             scope.launch {
-                var finalProgress = currentProgress
-                if (velocity > 15f && currentProgress > 0.02f) {
-                    val screenHeight = 2400f
-                    val normalizedVelocity = velocity / screenHeight
-                    var progress = currentProgress
-                    var currentVelocity = normalizedVelocity * 16f * 1.5f
-                    val friction = 0.97f * 0.92f
-                    val minVelocity = 0.0003f
-                    while (progress < 1f && abs(currentVelocity) > minVelocity) {
-                        currentVelocity *= friction
-                        progress = (progress + currentVelocity).coerceIn(0f, 1f)
-                        onRawProgressChange(progress)
-                        delay(16L)
-                        if (progress >= 1f) break
-                    }
-                    finalProgress = progress.coerceIn(0f, 1f)
-                    onRawProgressChange(finalProgress)
-                }
-                if (finalProgress >= 0.5f) {
-                    onTargetProgressChange(1f)
-                    delay(350)
-                    navController.navigate("now_playing/${currentTrack.id}") { launchSingleTop = true }
-                    navController.currentBackStackEntry?.savedStateHandle?.set("playerSourceRoute", localCurrentRoute)
-                    delay(100)
-                    onTargetProgressChange(0f)
+                val shouldOpen = currentProgress >= 0.3f || velocity > 8f
+                if (shouldOpen) {
+                    // Сразу сбрасываем прогресс и открываем плеер — без двойной анимации
                     onRawProgressChange(0f)
+                    onTargetProgressChange(0f)
+                    navController.currentBackStackEntry?.savedStateHandle?.set("playerSourceRoute", localCurrentRoute)
+                    navController.navigate("now_playing/${currentTrack.id}") { launchSingleTop = true }
                 } else {
                     onTargetProgressChange(0f)
-                    delay(350)
+                    delay(300)
                     onRawProgressChange(0f)
                 }
             }

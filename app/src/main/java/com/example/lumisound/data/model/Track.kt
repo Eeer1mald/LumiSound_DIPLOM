@@ -10,5 +10,7 @@ data class Track(
     val hdImageUrl: String? = null,
     val previewUrl: String? = null,
     val trackUrl: String? = null,
-    val genre: String? = null
+    val genre: String? = null,
+    val playCount: Int? = null,
+    val duration: Int? = null   // в секундах
 )

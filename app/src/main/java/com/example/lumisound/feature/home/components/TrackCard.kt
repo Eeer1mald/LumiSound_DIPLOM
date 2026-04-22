@@ -1,4 +1,4 @@
-package com.example.lumisound.feature.home.components
+﻿package com.example.lumisound.feature.home.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,10 +32,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.lumisound.feature.home.TrackPreview
-import com.example.lumisound.ui.theme.ColorOnBackground
-import com.example.lumisound.ui.theme.ColorSecondary
-import com.example.lumisound.ui.theme.ColorSurface
 import com.example.lumisound.ui.theme.GradientStart
+import com.example.lumisound.ui.theme.LocalAppColors
 
 @Composable
 fun TrackCard(
@@ -44,7 +42,7 @@ fun TrackCard(
     onClick: (TrackPreview) -> Unit,
     testTag: String
 ) {
-    val cardColor = remember { ColorSurface }
+    val cardColor = LocalAppColors.current.surface
 
     Column(
         modifier = modifier
@@ -93,14 +91,14 @@ fun TrackCard(
 
         Text(
             text = track.title,
-            style = MaterialTheme.typography.bodyMedium.copy(color = ColorOnBackground),
+            style = MaterialTheme.typography.bodyMedium.copy(color = LocalAppColors.current.onBackground),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         if (track.artist.isNotEmpty()) {
             Text(
                 text = track.artist,
-                style = MaterialTheme.typography.bodySmall.copy(color = ColorSecondary),
+                style = MaterialTheme.typography.bodySmall.copy(color = LocalAppColors.current.secondary),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

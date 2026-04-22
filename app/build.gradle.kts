@@ -33,13 +33,24 @@ android {
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("lumisound-release.jks")
+            storePassword = "lumisound2024"
+            keyAlias = "lumisound"
+            keyPassword = "lumisound2024"
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
