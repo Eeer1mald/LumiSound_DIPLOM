@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -27,7 +29,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.lumisound.ui.theme.LocalAppColors
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
@@ -56,6 +60,7 @@ import com.example.lumisound.feature.settings.SettingsScreen
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 /**
  * Навигационные маршруты основного приложения.
@@ -420,7 +425,12 @@ fun MainNavGraph(
                 userId = userId,
                 username = username,
                 avatarUrl = avatarUrl,
-                onClose = { navController.popBackStack() }
+                onClose = { navController.popBackStack() },
+                onArtistClick = { artistId, artistName, artistImageUrl ->
+                    navController.navigate(
+                        MainDestination.Artist().createRoute(artistId, artistName, artistImageUrl)
+                    )
+                }
             )
         }
 
@@ -493,8 +503,50 @@ fun MainNavGraph(
         val currentRoute = navBackStackEntry?.destination?.route
         val isOnFullPlayer = currentRoute?.startsWith("now_playing") == true
         val isOnMainTabs = currentRoute == "home"
+
+        // Глобальный тост "Кэш очищен" — поверх любого экрана
+        val settingsVm: com.example.lumisound.feature.settings.SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+        val settingsState by settingsVm.state.collectAsState()
+        var showCacheToast by remember { mutableStateOf(false) }
+        LaunchedEffect(settingsState.cacheCleared) {
+            if (settingsState.cacheCleared) {
+                showCacheToast = true
+                settingsVm.clearMessages()
+                delay(2500)
+                showCacheToast = false
+            }
+        }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showCacheToast,
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it },
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp).statusBarsPadding()
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 24.dp)
+                    .background(com.example.lumisound.ui.theme.GradientStart, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                androidx.compose.material3.Text("Кэш очищен", color = androidx.compose.ui.graphics.Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            }
+        }
         val isOnReviewScreen = currentRoute?.startsWith("review") == true
-        if (globalCurrentTrack != null && !isOnFullPlayer && !isOnMainTabs && !isOnReviewScreen) {
+
+        // Задержка показа мини-плеера после закрытия полного плеера —
+        // чтобы не мигал в момент popBackStack()
+        var miniPlayerVisible by remember { mutableStateOf(false) }
+        LaunchedEffect(isOnFullPlayer) {
+            if (!isOnFullPlayer) {
+                // Ждём 2 кадра (33мс) прежде чем показать мини-плеер
+                delay(33)
+                miniPlayerVisible = true
+            } else {
+                miniPlayerVisible = false
+            }
+        }
+
+        if (globalCurrentTrack != null && miniPlayerVisible && !isOnFullPlayer && !isOnMainTabs && !isOnReviewScreen) {
             // Состояние свайпа вверх для открытия плеера
             var globalMiniRawProgress by remember { mutableFloatStateOf(0f) }
             var globalMiniIsDragging by remember { mutableStateOf(false) }
@@ -512,6 +564,12 @@ fun MainNavGraph(
             val globalPlaylist by playerStateHolder.playlist.collectAsState()
             val globalCurrentIdx by playerStateHolder.currentIndex.collectAsState()
 
+            // Прогресс для кольца мини-плеера — читаем снаружи лямбды
+            val globalMiniPos by globalPlayerViewModel.currentPosition.collectAsState()
+            val globalMiniDur by globalPlayerViewModel.duration.collectAsState()
+            val globalMiniRingProgress = if (globalMiniDur > 0)
+                (globalMiniPos.toFloat() / globalMiniDur.toFloat()).coerceIn(0f, 1f) else 0f
+
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -520,11 +578,8 @@ fun MainNavGraph(
                 com.example.lumisound.feature.home.components.MiniPlayer(
                     currentTrack = globalCurrentTrack,
                     isPlaying = globalIsPlaying,
-                    progress = run {
-                        val pos by globalPlayerViewModel.currentPosition.collectAsState()
-                        val dur by globalPlayerViewModel.duration.collectAsState()
-                        if (dur > 0) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
-                    },
+                    progress = globalMiniRingProgress,
+                    isSleepTimerActive = playerStateHolder.sleepTimerActive,
                     onPlayPauseClick = { globalPlayerViewModel.togglePlayPause() },
                     onTrackClick = {
                         if (globalMiniProgress < 0.05f && !globalMiniIsDragging) {

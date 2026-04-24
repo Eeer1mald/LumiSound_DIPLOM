@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.pager.rememberPagerState
@@ -26,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.example.lumisound.AppPreloadViewModel
@@ -243,6 +246,58 @@ private fun MiniPlayerWrapper(
     val duration by playerViewModel.duration.collectAsState()
     val avgScore by playerViewModel.avgScore.collectAsState()
     val miniProgress = if (duration > 0) (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
+    val isSleepTimerActive = playerViewModel.playerStateHolder.sleepTimerActive
+    var showSleepTimerDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var sleepTimerRemainingText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+
+    // Обновляем оставшееся время каждую секунду когда диалог открыт
+    androidx.compose.runtime.LaunchedEffect(showSleepTimerDialog) {
+        if (showSleepTimerDialog) {
+            while (showSleepTimerDialog) {
+                val remainingMs = playerViewModel.audioPlayerService.getSleepTimerRemainingMs()
+                if (remainingMs <= 0L) {
+                    showSleepTimerDialog = false
+                    break
+                }
+                val totalSec = remainingMs / 1000
+                val min = totalSec / 60
+                val sec = totalSec % 60
+                sleepTimerRemainingText = "${min}:${sec.toString().padStart(2, '0')}"
+                delay(1000L)
+            }
+        }
+    }
+
+    if (showSleepTimerDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showSleepTimerDialog = false },
+            title = { androidx.compose.material3.Text("Таймер сна", color = com.example.lumisound.ui.theme.LocalAppColors.current.onBackground) },
+            text = {
+                androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.Text(
+                        "Музыка выключится через $sleepTimerRemainingText",
+                        color = com.example.lumisound.ui.theme.LocalAppColors.current.secondary,
+                        fontSize = 14.sp
+                    )
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showSleepTimerDialog = false }) {
+                    androidx.compose.material3.Text("OK", color = com.example.lumisound.ui.theme.GradientStart)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showSleepTimerDialog = false
+                    playerViewModel.audioPlayerService.cancelSleepTimer()
+                    playerViewModel.playerStateHolder.sleepTimerActive = false
+                }) {
+                    androidx.compose.material3.Text("Отменить таймер", color = androidx.compose.ui.graphics.Color(0xFFFF5C6C))
+                }
+            },
+            containerColor = com.example.lumisound.ui.theme.LocalAppColors.current.surface
+        )
+    }
 
     // Соседние треки для отображения при свайпе
     val playlist by playerViewModel.playerStateHolder.playlist.collectAsState()
@@ -273,6 +328,17 @@ private fun MiniPlayerWrapper(
         prevTrackInfo = miniPrevTrack,
         isLiked = isLiked,
         avgScore = avgScore,
+        isSleepTimerActive = isSleepTimerActive,
+        onSleepTimerClick = {
+            val remainingMs = playerViewModel.audioPlayerService.getSleepTimerRemainingMs()
+            if (remainingMs > 0L) {
+                val totalSec = remainingMs / 1000
+                val min = totalSec / 60
+                val sec = totalSec % 60
+                sleepTimerRemainingText = "${min}:${sec.toString().padStart(2, '0')}"
+                showSleepTimerDialog = true
+            }
+        },
         animationProgress = animationProgress,
         onAnimationProgressChange = { onRawProgressChange(it.coerceIn(0f, 1f)) },
         onDragStart = { onDraggingChange(true); onVelocityChange(0f) },

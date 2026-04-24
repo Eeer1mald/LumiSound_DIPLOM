@@ -32,9 +32,12 @@ import com.example.lumisound.ui.theme.LocalAppColors
 
 typealias NavItem = String
 
-// Чёрный полупрозрачный фон
-private val NavBarBackground = Color(0xFF000000).copy(alpha = 0.6f)
-private val NavBarBorder = Color(0xFF1E1E1E).copy(alpha = 0.5f)
+// Фон навбара — адаптируется к теме
+@Composable
+private fun navBarBackground() = LocalAppColors.current.surface.copy(alpha = 0.95f)
+
+@Composable
+private fun navBarBorder() = LocalAppColors.current.onBackground.copy(alpha = 0.08f)
 
 @Composable
 fun BottomNavigationBar(
@@ -49,20 +52,18 @@ fun BottomNavigationBar(
         NavItemData("profile", Icons.Default.Person, "Профиль")
     )
 
-    // Полупрозрачный тёмно-синий контейнер
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(NavBarBackground)
+            .background(navBarBackground())
             .navigationBarsPadding()
             .testTag("bottom_navigation")
     ) {
-        // Тонкая линия сверху
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .size(height = 1.dp, width = 0.dp)
-                .background(NavBarBorder)
+                .background(navBarBorder())
                 .align(Alignment.TopCenter)
         )
 

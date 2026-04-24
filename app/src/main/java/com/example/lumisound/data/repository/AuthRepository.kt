@@ -62,7 +62,7 @@ interface AuthRepository {
     suspend fun getMyVoteForReview(accessToken: String, ratingId: String): Int?
 
     // Playlists
-    suspend fun createPlaylist(accessToken: String, name: String, description: String? = null, isPublic: Boolean = false): Result<SupabaseService.PlaylistResponse>
+    suspend fun createPlaylist(accessToken: String, name: String, description: String? = null, isPublic: Boolean = false, isSynthesis: Boolean = false, synthesisCode: String? = null): Result<SupabaseService.PlaylistResponse>
     suspend fun getMyPlaylists(accessToken: String): List<SupabaseService.PlaylistResponse>
     suspend fun deletePlaylist(accessToken: String, playlistId: String): Result<Unit>
     suspend fun updatePlaylistTrackCount(accessToken: String, playlistId: String, count: Int): Result<Unit>
@@ -85,6 +85,13 @@ interface AuthRepository {
     suspend fun createSynthesisSession(accessToken: String, creatorUsername: String?): Result<SupabaseService.SynthesisSession>
     suspend fun getSynthesisSession(accessToken: String, inviteCode: String): Result<SupabaseService.SynthesisSession>
     suspend fun joinSynthesisSession(accessToken: String, sessionId: String, username: String?, avatarUrl: String?): Result<Unit>
+    suspend fun leaveSynthesisSession(accessToken: String, sessionId: String): Result<Unit>
+    suspend fun deleteSynthesisSession(accessToken: String, sessionId: String): Result<Unit>
     suspend fun getSynthesisParticipants(accessToken: String, sessionId: String): List<SupabaseService.SynthesisParticipant>
+    suspend fun updateSynthesisPlaylistId(accessToken: String, sessionId: String, playlistId: String): Result<Unit>
+    suspend fun clearPlaylistTracks(accessToken: String, playlistId: String): Result<Unit>
+    suspend fun createSynthesisPlaylist(token: String, hostUserId: String, name: String, description: String, synthesisCode: String): Result<SupabaseService.PlaylistResponse>
+    suspend fun getOrCreateSynthesisPlaylist(token: String, sessionId: String, hostUserId: String, name: String, description: String, synthesisCode: String): Result<String>
+    suspend fun findExistingSynthesis(accessToken: String, otherUserId: String): String?
+    suspend fun findExistingSynthesisBySession(accessToken: String, sessionId: String): String?
 }
-

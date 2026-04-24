@@ -387,7 +387,7 @@ private fun PlaylistTabContent(
                     playlist = playlist,
                     isLiked = state.likedPlaylistIds.contains(playlist.id),
                     showLike = !isMyTab && playlist.userId != state.currentUserId,
-                    showVisibilityToggle = isMyTab,
+                    showVisibilityToggle = isMyTab && !playlist.isSynthesis,
                     onToggleLike = { onToggleLike(playlist.id) },
                     onToggleVisibility = { onToggleVisibility(playlist.id, playlist.isPublic) },
                     onClick = { onPlaylistClick(playlist) }

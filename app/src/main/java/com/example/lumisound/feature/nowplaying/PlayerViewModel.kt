@@ -23,7 +23,8 @@ class PlayerViewModel @Inject constructor(
     val playerStateHolder: com.example.lumisound.data.player.PlayerStateHolder,
     private val authRepository: AuthRepository,
     private val musicRepository: MusicRepository,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    val audiusApi: com.example.lumisound.data.remote.AudiusApiService
 ) : ViewModel() {
     
     private val _currentTrack = MutableStateFlow<Track?>(null)
@@ -97,6 +98,7 @@ class PlayerViewModel @Inject constructor(
                     _currentPosition.value = 0L
                     _duration.value = 0L
                     loadAvgScore(newTrack.id)
+                    audioPlayerService.updateMediaMetadata(newTrack.name, newTrack.artist, newTrack.imageUrl ?: newTrack.hdImageUrl)
                     hasTrackedCurrentTrack = false
                     lastTrackedTrackId = null
                     stopTrackPlayTracking()
@@ -139,6 +141,9 @@ class PlayerViewModel @Inject constructor(
         _duration.value = 0L
         playerStateHolder.setCurrentTrack(track)
         loadAvgScore(track.id)
+        // Обновляем метаданные для уведомления и запускаем сервис
+        audioPlayerService.startMediaService()
+        audioPlayerService.updateMediaMetadata(track.name, track.artist, track.imageUrl ?: track.hdImageUrl)
         track.previewUrl?.let { url ->
             // Если трек уже в очереди ExoPlayer — просто переходим к нему
             val playlist = playerStateHolder.playlist.value
@@ -175,6 +180,9 @@ class PlayerViewModel @Inject constructor(
         _duration.value = 0L
         playerStateHolder.setCurrentTrack(track)
         loadAvgScore(track.id)
+        // Обновляем метаданные для уведомления и запускаем сервис
+        audioPlayerService.startMediaService()
+        audioPlayerService.updateMediaMetadata(track.name, track.artist, track.imageUrl ?: track.hdImageUrl)
 
         // Устанавливаем всю очередь в ExoPlayer — он предзагрузит следующие треки
         val urls = tracks.mapNotNull { it.previewUrl }

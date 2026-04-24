@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -34,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -179,6 +181,19 @@ fun PlayerScreen(
     var showAddToPlaylist by remember { mutableStateOf(false) }
     var showTrackInfo by remember { mutableStateOf(false) }
 
+    // Когда isClosing=true — запускаем анимацию до конца, потом вызываем onClose
+    LaunchedEffect(isClosing) {
+        if (isClosing) {
+            // Ждём один кадр чтобы closeProgress=1f успел отрендериться
+            kotlinx.coroutines.delay(32)
+            onClose()
+            isClosing = false
+            closeProgress = 0f
+            targetCloseProgress = 0f
+            isDraggingToClose = false
+        }
+    }
+
     // Горизонтальный свайп — Animatable для плавного контроля
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
     val swipeAnim = remember { Animatable(0f) }
@@ -211,8 +226,9 @@ fun PlayerScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // Предыдущий экран — рендерим всегда для сохранения состояния
-        if (stablePreviousRoute != null && navController != null) {
+        // Предыдущий экран — рендерим только при активном свайпе закрытия
+        // чтобы показать его проявление под плеером
+        if (stablePreviousRoute != null && navController != null && effectiveCloseProgress > 0.01f) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -264,7 +280,7 @@ fun PlayerScreen(
                 .fillMaxSize()
                 .offset { IntOffset(x = swipeOffsetPx.toInt(), y = contentOffsetY.toInt()) }
                 .alpha(contentAlpha)
-                .background(LocalAppColors.current.background.copy(alpha = (1f - effectiveCloseProgress * 0.5f).coerceIn(0.5f, 1f)))
+                .background(LocalAppColors.current.background)
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
@@ -283,10 +299,10 @@ fun PlayerScreen(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
-                            isDraggingToClose = false
-                            closeProgress = 0f
-                            targetCloseProgress = 0f
-                            onClose()
+                            // Кнопка — мгновенное закрытие без анимации
+                            isDraggingToClose = true
+                            closeProgress = 1f
+                            isClosing = true
                         },                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -592,26 +608,27 @@ fun PlayerScreen(
             }
         }
 
-        // Зона свайпа вниз для закрытия
+        // Зона свайпа вниз для закрытия — от самого верха, но с отступами по бокам
+        // чтобы не перекрывать кнопку закрытия (слева) и троеточие (справа)
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.7f)
+                .fillMaxWidth()
                 .height(160.dp)
-                .align(Alignment.TopEnd)
+                .align(Alignment.TopCenter)
+                .padding(start = 60.dp, end = 60.dp) // оставляем место для кнопок хедера
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onDragStart = { isDraggingToClose = true },
                         onDragEnd = {
                             if (closeProgress >= 0.4f) {
-                                // Скрываем контент сразу, потом закрываем
+                                // Выставляем closeProgress=1f (плеер полностью скрыт)
+                                // isDraggingToClose остаётся true — effectiveCloseProgress = closeProgress
                                 closeProgress = 1f
-                                isDraggingToClose = false
-                                onClose()
-                                closeProgress = 0f
-                                targetCloseProgress = 0f
+                                // isClosing запустит LaunchedEffect: ждёт 2 кадра → onClose()
+                                isClosing = true
                             } else {
-                                closeProgress = 0f
                                 isDraggingToClose = false
+                                closeProgress = 0f
                                 targetCloseProgress = 0f
                             }
                         },
@@ -688,21 +705,37 @@ private fun PlayerPageContent(track: com.example.lumisound.data.model.Track, con
 
 @Composable
 private fun TrackInfoSheet(track: Track, onDismiss: () -> Unit) {
+    // Загружаем полные данные трека через API
+    val audiusApi: com.example.lumisound.data.remote.AudiusApiService = androidx.hilt.navigation.compose.hiltViewModel<com.example.lumisound.feature.nowplaying.PlayerViewModel>().audiusApi
+    var fullTrack by remember { mutableStateOf<com.example.lumisound.data.remote.AudiusTrack?>(null) }
+    var fullArtist by remember { mutableStateOf<com.example.lumisound.data.remote.AudiusArtistFull?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(track.id) {
+        isLoading = true
+        // Загружаем трек и артиста параллельно
+        val trackResult = audiusApi.getTrackById(track.id)
+        fullTrack = trackResult.getOrNull()
+        val artistId = fullTrack?.artist?.id ?: track.artistId
+        if (!artistId.isNullOrBlank()) {
+            fullArtist = audiusApi.getArtist(artistId).getOrNull()
+        }
+        isLoading = false
+    }
+
     Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
         // Затемнение
         Box(
             modifier = androidx.compose.ui.Modifier.fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.6f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onDismiss() }
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() }
         )
         // Шторка
         Column(
             modifier = androidx.compose.ui.Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .fillMaxHeight(0.85f)
                 .background(Color(0xFF1A1A1A), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
@@ -724,60 +757,156 @@ private fun TrackInfoSheet(track: Track, onDismiss: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    modifier = androidx.compose.ui.Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(LocalAppColors.current.surface)
+                    modifier = androidx.compose.ui.Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)).background(LocalAppColors.current.surface)
                 ) {
-                    if (!track.imageUrl.isNullOrEmpty()) {
+                    val coverUrl = track.hdImageUrl ?: track.imageUrl
+                    if (!coverUrl.isNullOrEmpty()) {
                         AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current).data(track.imageUrl).crossfade(false).build(),
+                            model = ImageRequest.Builder(LocalContext.current).data(coverUrl).crossfade(false).build(),
                             contentDescription = null,
                             modifier = androidx.compose.ui.Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
+                    } else {
+                        Box(modifier = androidx.compose.ui.Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.MusicNote, null, tint = GradientStart.copy(alpha = 0.5f), modifier = androidx.compose.ui.Modifier.size(32.dp))
+                        }
                     }
                 }
-                Column(modifier = androidx.compose.ui.Modifier.weight(1f)) {
-                    Text(track.name, color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 2)
-                    Text(track.artist, color = LocalAppColors.current.secondary, fontSize = 14.sp)
+                Column(modifier = androidx.compose.ui.Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(track.name, color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Text(track.artist, color = GradientStart, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    if (!track.genre.isNullOrBlank()) {
+                        Text(track.genre, color = LocalAppColors.current.secondary, fontSize = 12.sp)
+                    }
                 }
             }
 
-            Spacer(modifier = androidx.compose.ui.Modifier.height(20.dp))
-            Box(modifier = androidx.compose.ui.Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
             Spacer(modifier = androidx.compose.ui.Modifier.height(16.dp))
+            Box(modifier = androidx.compose.ui.Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
 
-            // Информация
-            Column(
-                modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                if (!track.genre.isNullOrBlank()) {
-                    TrackInfoRow(label = "Жанр", value = track.genre)
+            if (isLoading) {
+                Box(modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator(color = GradientStart, modifier = androidx.compose.ui.Modifier.size(24.dp), strokeWidth = 2.dp)
                 }
-                if ((track.duration ?: 0) > 0) {
-                    val m = (track.duration!! / 60)
-                    val s = (track.duration % 60).toString().padStart(2, '0')
-                    TrackInfoRow(label = "Длительность", value = "$m:$s")
-                }
-                if ((track.playCount ?: 0) > 0) {
-                    val count = track.playCount!!
-                    val formatted = when {
-                        count >= 1_000_000 -> "${count / 1_000_000}M прослушиваний"
-                        count >= 1_000 -> "${count / 1_000}K прослушиваний"
-                        else -> "$count прослушиваний"
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // ── Трек ──
+                    item {
+                        TrackInfoSection(title = "О треке") {
+                            if ((track.duration ?: 0) > 0) {
+                                val d = track.duration!!
+                                val h = d / 3600
+                                val m = (d % 3600) / 60
+                                val s = (d % 60).toString().padStart(2, '0')
+                                val formatted = if (h > 0) "$h:${m.toString().padStart(2,'0')}:$s" else "$m:$s"
+                                TrackInfoRow(label = "Длительность", value = formatted)
+                            }
+                            val genre = fullTrack?.genre ?: track.genre
+                            if (!genre.isNullOrBlank()) TrackInfoRow(label = "Жанр", value = genre)
+                            fullTrack?.mood?.takeIf { it.isNotBlank() }?.let {
+                                TrackInfoRow(label = "Настроение", value = it)
+                            }
+                            fullTrack?.tags?.takeIf { it.isNotBlank() }?.let { tags ->
+                                val cleaned = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }.joinToString(" · ")
+                                if (cleaned.isNotBlank()) TrackInfoRow(label = "Теги", value = cleaned)
+                            }
+                            fullTrack?.releaseDate?.takeIf { it.isNotBlank() }?.let { date ->
+                                TrackInfoRow(label = "Дата релиза", value = date.substringBefore("T").ifBlank { date })
+                            }
+                            fullTrack?.description?.takeIf { it.isNotBlank() }?.let { desc ->
+                                Spacer(modifier = androidx.compose.ui.Modifier.height(4.dp))
+                                Text(
+                                    desc.take(300) + if (desc.length > 300) "..." else "",
+                                    color = LocalAppColors.current.secondary, fontSize = 13.sp, lineHeight = 18.sp
+                                )
+                            }
+                        }
                     }
-                    TrackInfoRow(label = "Прослушивания", value = formatted)
-                }
-                if (!track.artistId.isNullOrBlank()) {
-                    TrackInfoRow(label = "ID артиста", value = track.artistId)
-                }
-                TrackInfoRow(label = "ID трека", value = track.id)
-                if (!track.trackUrl.isNullOrBlank()) {
-                    TrackInfoRow(label = "Источник", value = "Audius")
+
+                    // ── Артист ──
+                    if (fullArtist != null || !track.artistId.isNullOrBlank()) {
+                        item {
+                            TrackInfoSection(title = "Об артисте") {
+                                // Аватарка + имя
+                                val artistAvatar = fullArtist?.profilePicture?.let {
+                                    com.example.lumisound.data.remote.AudiusApiServiceHelper.getProfilePictureUrl(it)
+                                } ?: track.artistImageUrl
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = androidx.compose.ui.Modifier.padding(bottom = 8.dp)
+                                ) {
+                                    Box(modifier = androidx.compose.ui.Modifier.size(40.dp).clip(CircleShape).background(LocalAppColors.current.surface)) {
+                                        if (!artistAvatar.isNullOrEmpty()) {
+                                            AsyncImage(
+                                                model = ImageRequest.Builder(LocalContext.current).data(artistAvatar).crossfade(false).build(),
+                                                contentDescription = null,
+                                                modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Box(modifier = androidx.compose.ui.Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.MusicNote, null, tint = LocalAppColors.current.secondary, modifier = androidx.compose.ui.Modifier.size(18.dp))
+                                            }
+                                        }
+                                    }
+                                    Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(track.artist, color = LocalAppColors.current.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                            if (fullArtist?.isVerified == true) {
+                                                Icon(Icons.Default.CheckCircle, null, tint = GradientStart, modifier = androidx.compose.ui.Modifier.size(14.dp))
+                                            }
+                                        }
+                                        fullArtist?.location?.takeIf { it.isNotBlank() }?.let {
+                                            Text(it, color = LocalAppColors.current.secondary, fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                                fullArtist?.bio?.takeIf { it.isNotBlank() }?.let { bio ->
+                                    Text(
+                                        bio.take(200) + if (bio.length > 200) "..." else "",
+                                        color = LocalAppColors.current.secondary, fontSize = 13.sp,
+                                        modifier = androidx.compose.ui.Modifier.padding(bottom = 8.dp)
+                                    )
+                                }
+                                fullArtist?.followerCount?.takeIf { it > 0 }?.let { followers ->
+                                    val fmt = when {
+                                        followers >= 1_000_000 -> "${String.format("%.1f", followers / 1_000_000f)}M"
+                                        followers >= 1_000 -> "${String.format("%.1f", followers / 1_000f)}K"
+                                        else -> "$followers"
+                                    }
+                                    TrackInfoRow(label = "Подписчиков", value = fmt)
+                                }
+                                fullArtist?.trackCount?.takeIf { it > 0 }?.let {
+                                    TrackInfoRow(label = "Треков", value = "$it")
+                                }
+                                fullArtist?.twitterHandle?.takeIf { it.isNotBlank() }?.let {
+                                    TrackInfoRow(label = "Twitter", value = "@$it")
+                                }
+                                fullArtist?.instagramHandle?.takeIf { it.isNotBlank() }?.let {
+                                    TrackInfoRow(label = "Instagram", value = "@$it")
+                                }
+                            }
+                        }
+                    }
                 }
             }
-
-            Spacer(modifier = androidx.compose.ui.Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun TrackInfoSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(title, color = LocalAppColors.current.secondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.8.sp, modifier = androidx.compose.ui.Modifier.padding(bottom = 2.dp))
+        content()
     }
 }
 
@@ -793,4 +922,10 @@ private fun TrackInfoRow(label: String, value: String) {
             maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = androidx.compose.ui.Modifier.weight(1f, fill = false).padding(start = 16.dp))
     }
+}
+
+private fun formatCount(count: Int): String = when {
+    count >= 1_000_000 -> "${String.format("%.1f", count / 1_000_000f)}M"
+    count >= 1_000 -> "${String.format("%.1f", count / 1_000f)}K"
+    else -> "$count"
 }

@@ -21,6 +21,7 @@ class PlayerStateHolder @Inject constructor() {
 
     var autoplayEnabled: Boolean = true
     var showFloatingComments: Boolean = true
+    var sleepTimerActive: Boolean = false
 
     private val _playlist = MutableStateFlow<List<Track>>(emptyList())
     val playlist: StateFlow<List<Track>> = _playlist.asStateFlow()

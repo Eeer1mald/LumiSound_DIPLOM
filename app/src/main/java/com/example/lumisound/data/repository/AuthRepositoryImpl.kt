@@ -78,7 +78,9 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun updateProfileVisibility(accessToken: String, isPublic: Boolean): Result<Unit> {
-        return supabase.updateProfileVisibility(accessToken, isPublic)
+        return supabase.updateProfileVisibility(accessToken, isPublic).also {
+            if (it.isSuccess) cachedProfile = null // инвалидируем кэш
+        }
     }
 
     override suspend fun googleSignIn(idToken: String): Result<Unit> {
@@ -285,8 +287,8 @@ class AuthRepositoryImpl @Inject constructor(
         return supabase.getMyVoteForReview(accessToken, ratingId)
     }
 
-    override suspend fun createPlaylist(accessToken: String, name: String, description: String?, isPublic: Boolean): Result<SupabaseService.PlaylistResponse> {
-        return supabase.createPlaylist(accessToken, name, description, isPublic)
+    override suspend fun createPlaylist(accessToken: String, name: String, description: String?, isPublic: Boolean, isSynthesis: Boolean, synthesisCode: String?): Result<SupabaseService.PlaylistResponse> {
+        return supabase.createPlaylist(accessToken, name, description, isPublic, isSynthesis, synthesisCode)
     }
 
     override suspend fun getMyPlaylists(accessToken: String): List<SupabaseService.PlaylistResponse> {
@@ -369,7 +371,39 @@ class AuthRepositoryImpl @Inject constructor(
         return supabase.joinSynthesisSession(accessToken, sessionId, username, avatarUrl)
     }
 
+    override suspend fun leaveSynthesisSession(accessToken: String, sessionId: String): Result<Unit> {
+        return supabase.leaveSynthesisSession(accessToken, sessionId)
+    }
+
+    override suspend fun deleteSynthesisSession(accessToken: String, sessionId: String): Result<Unit> {
+        return supabase.deleteSynthesisSession(accessToken, sessionId)
+    }
+
     override suspend fun getSynthesisParticipants(accessToken: String, sessionId: String): List<SupabaseService.SynthesisParticipant> {
         return supabase.getSynthesisParticipants(accessToken, sessionId)
+    }
+
+    override suspend fun updateSynthesisPlaylistId(accessToken: String, sessionId: String, playlistId: String): Result<Unit> {
+        return supabase.updateSynthesisPlaylistId(accessToken, sessionId, playlistId)
+    }
+
+    override suspend fun clearPlaylistTracks(accessToken: String, playlistId: String): Result<Unit> {
+        return supabase.clearPlaylistTracks(accessToken, playlistId)
+    }
+
+    override suspend fun createSynthesisPlaylist(token: String, hostUserId: String, name: String, description: String, synthesisCode: String): Result<SupabaseService.PlaylistResponse> {
+        return supabase.createSynthesisPlaylist(token, hostUserId, name, description, synthesisCode)
+    }
+
+    override suspend fun getOrCreateSynthesisPlaylist(token: String, sessionId: String, hostUserId: String, name: String, description: String, synthesisCode: String): Result<String> {
+        return supabase.getOrCreateSynthesisPlaylist(token, sessionId, hostUserId, name, description, synthesisCode)
+    }
+
+    override suspend fun findExistingSynthesis(accessToken: String, otherUserId: String): String? {
+        return supabase.findExistingSynthesis(accessToken, otherUserId)
+    }
+
+    override suspend fun findExistingSynthesisBySession(accessToken: String, sessionId: String): String? {
+        return supabase.findExistingSynthesisBySession(accessToken, sessionId)
     }
 }

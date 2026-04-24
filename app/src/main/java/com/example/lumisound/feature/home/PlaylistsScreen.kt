@@ -180,17 +180,19 @@ fun PlaylistGridCard(
                 modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Box(
-                    modifier = Modifier.size(24.dp).background(Color.Black.copy(alpha = 0.65f), CircleShape)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onToggleVisibility() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        if (playlist.isPublic) Icons.Default.Public else Icons.Default.Lock,
-                        null,
-                        tint = if (playlist.isPublic) GradientStart else LocalAppColors.current.secondary,
-                        modifier = Modifier.size(12.dp)
-                    )
+                if (!playlist.isSynthesis) {
+                    Box(
+                        modifier = Modifier.size(24.dp).background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onToggleVisibility() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            if (playlist.isPublic) Icons.Default.Public else Icons.Default.Lock,
+                            null,
+                            tint = if (playlist.isPublic) GradientStart else LocalAppColors.current.secondary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
                 }
                 Box(
                     modifier = Modifier.size(24.dp).background(Color.Black.copy(alpha = 0.65f), CircleShape)

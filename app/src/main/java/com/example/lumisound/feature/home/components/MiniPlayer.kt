@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
@@ -79,6 +80,8 @@ fun MiniPlayer(
     prevTrackInfo: com.example.lumisound.data.model.Track? = null,
     avgScore: Float? = null,
     isLiked: Boolean = false,
+    isSleepTimerActive: Boolean = false,
+    onSleepTimerClick: (() -> Unit)? = null,
     animationProgress: Float = 0f,
     onAnimationProgressChange: (Float) -> Unit = {},
     onDragStart: () -> Unit = {},
@@ -337,11 +340,23 @@ fun MiniPlayer(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Add button — переход на профиль артиста
+                // Иконка таймера сна — если активен
+                if (isSleepTimerActive) {
+                    Icon(
+                        imageVector = Icons.Default.Bedtime,
+                        contentDescription = "Таймер сна",
+                        tint = GradientStart,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { onSleepTimerClick?.invoke() }
+                    )
+                }
+
+                // Переход на профиль артиста
                 Icon(
                     imageVector = Icons.Default.Person,
                     contentDescription = "Artist profile",
-                    tint = Color.White,
+                    tint = LocalAppColors.current.onBackground,
                     modifier = Modifier
                         .size(24.dp)
                         .clickable {

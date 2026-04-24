@@ -373,6 +373,7 @@ class SupabaseService @Inject constructor(
         val bio: String? = null,
         @SerialName("favorite_genre") val favoriteGenre: String? = null,
         @SerialName("avatar_url") val avatarUrl: String? = null,
+        @SerialName("is_public") val isPublic: Boolean? = true,
         @SerialName("created_at") val createdAt: String? = null,
         @SerialName("updated_at") val updatedAt: String? = null
     )
@@ -389,7 +390,7 @@ class SupabaseService @Inject constructor(
                 url("$baseUrl/rest/v1/profiles")
                 header("apikey", anonKey)
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
-                header("select", "id,username,email,bio,favorite_genre,avatar_url,created_at,updated_at")
+                header("select", "id,username,email,bio,favorite_genre,avatar_url,is_public,created_at,updated_at")
                 // Фильтруем по id текущего пользователя
                 parameter("id", "eq.$userId")
             }
@@ -421,7 +422,7 @@ class SupabaseService @Inject constructor(
                 header("apikey", anonKey)
                 header(HttpHeaders.Authorization, "Bearer $anonKey")
                 parameter("id", "eq.$userId")
-                parameter("select", "id,username,email,bio,favorite_genre,avatar_url,created_at,updated_at")
+                parameter("select", "id,username,email,bio,favorite_genre,avatar_url,is_public,created_at,updated_at")
                 parameter("limit", "1")
             }
             if (response.status.isSuccess()) {
@@ -526,13 +527,14 @@ class SupabaseService @Inject constructor(
         }
     }
     
-    /** Получить избранные треки любого пользователя по его userId (используется для синтеза) */
+    /** Получить избранные треки любого пользователя по его userId (используется для синтеза и публичного профиля) */
     suspend fun getFavoriteTracksForUser(accessToken: String, userId: String, limit: Int = 30): List<FavoriteTrackResponse> {
         return try {
+            val authHeader = if (accessToken.isBlank() || accessToken == "anon") "Bearer $anonKey" else "Bearer $accessToken"
             val response = http.get {
                 url("$baseUrl/rest/v1/favorite_tracks")
                 header("apikey", anonKey)
-                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                header(HttpHeaders.Authorization, authHeader)
                 header("select", "*")
                 parameter("user_id", "eq.$userId")
                 parameter("order", "play_count.desc,added_at.desc")
@@ -840,6 +842,50 @@ class SupabaseService @Inject constructor(
         @SerialName("created_at") val createdAt: String? = null,
         @SerialName("updated_at") val updatedAt: String? = null
     )
+
+    /** Получить рецензии конкретного пользователя, отсортированные по репутации */
+    suspend fun getRatingsByUserId(userId: String, limit: Int = 10): List<TrackRatingResponse> {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/track_ratings")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                parameter("user_id", "eq.$userId")
+                parameter("review", "not.is.null")
+                parameter("order", "reputation.desc,overall_score.desc")
+                parameter("limit", limit.toString())
+            }
+            if (response.status.isSuccess()) {
+                json.decodeFromString<List<TrackRatingResponse>>(response.bodyAsText())
+                    .filter { !it.review.isNullOrBlank() }
+            } else emptyList()
+        } catch (e: Exception) {
+            Log.w("SupabaseService", "getRatingsByUserId error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /** Получить любимых артистов конкретного пользователя */
+    suspend fun getFavoriteArtistsForUser(userId: String, limit: Int = 10): List<FavoriteArtistResponse> {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/favorite_artists")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                parameter("user_id", "eq.$userId")
+                parameter("order", "play_count.desc,added_at.desc")
+                parameter("limit", limit.toString())
+            }
+            if (response.status.isSuccess()) {
+                json.decodeFromString<List<FavoriteArtistResponse>>(response.bodyAsText())
+            } else emptyList()
+        } catch (e: Exception) {
+            Log.w("SupabaseService", "getFavoriteArtistsForUser error: ${e.message}")
+            emptyList()
+        }
+    }
 
     suspend fun upsertTrackRating(accessToken: String, rating: TrackRatingInsert): Result<TrackRatingResponse> {
         return runCatching {
@@ -1268,6 +1314,8 @@ class SupabaseService @Inject constructor(
         @SerialName("created_at") val createdAt: String? = null,
         @SerialName("track_count") val trackCount: Int = 0,
         @SerialName("is_public") val isPublic: Boolean = false,
+        @SerialName("is_synthesis") val isSynthesis: Boolean = false,
+        @SerialName("synthesis_code") val synthesisCode: String? = null,
         @SerialName("likes_count") val likesCount: Int = 0,
         val username: String? = null,
         @SerialName("user_avatar_url") val userAvatarUrl: String? = null
@@ -1301,7 +1349,7 @@ class SupabaseService @Inject constructor(
         @SerialName("added_by_avatar") val addedByAvatar: String? = null
     )
 
-    suspend fun createPlaylist(accessToken: String, name: String, description: String? = null, isPublic: Boolean = false): Result<PlaylistResponse> {
+    suspend fun createPlaylist(accessToken: String, name: String, description: String? = null, isPublic: Boolean = false, isSynthesis: Boolean = false, synthesisCode: String? = null): Result<PlaylistResponse> {
         return runCatching {
             val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
             val profile = getProfile(accessToken)
@@ -1314,6 +1362,8 @@ class SupabaseService @Inject constructor(
                 profile?.username?.let { append("\"username\":\"${it.replace("\"", "\\\"")}\",") }
                 profile?.avatarUrl?.let { append("\"user_avatar_url\":\"${it.replace("\"", "\\\"")}\",") }
                 append("\"is_public\":$isPublic,")
+                if (isSynthesis) append("\"is_synthesis\":true,")
+                synthesisCode?.let { append("\"synthesis_code\":\"$it\",") }
                 append("\"track_count\":0,")
                 append("\"likes_count\":0")
                 append("}")
@@ -1402,7 +1452,6 @@ class SupabaseService @Inject constructor(
 
     suspend fun updatePlaylistName(accessToken: String, playlistId: String, name: String, description: String?): Result<Unit> {
         return runCatching {
-            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
             val body = buildString {
                 append("{\"name\":\"${name.replace("\"", "\\\"")}\",")
                 if (description != null) append("\"description\":\"${description.replace("\"", "\\\"")}\"")
@@ -1410,7 +1459,7 @@ class SupabaseService @Inject constructor(
                 append("}")
             }
             val response = http.patch {
-                url("$baseUrl/rest/v1/playlists?id=eq.$playlistId&user_id=eq.$userId")
+                url("$baseUrl/rest/v1/playlists?id=eq.$playlistId")
                 header("apikey", anonKey)
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
                 contentType(ContentType.Application.Json)
@@ -1428,6 +1477,8 @@ class SupabaseService @Inject constructor(
                 header("apikey", anonKey)
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
                 parameter("is_public", "eq.true")
+                parameter("is_synthesis", "eq.false")
+                parameter("select", "id,user_id,name,description,cover_url,created_at,track_count,is_public,is_synthesis,synthesis_code,likes_count,username,user_avatar_url")
                 parameter("order", "likes_count.desc,created_at.desc")
                 parameter("limit", limit.toString())
             }
@@ -1449,7 +1500,9 @@ class SupabaseService @Inject constructor(
                 header("apikey", anonKey)
                 header(HttpHeaders.Authorization, "Bearer $anonKey")
                 parameter("is_public", "eq.true")
+                parameter("is_synthesis", "eq.false")
                 parameter("name", "ilike.*${query.trim()}*")
+                parameter("select", "id,user_id,name,description,cover_url,created_at,track_count,is_public,is_synthesis,synthesis_code,likes_count,username,user_avatar_url")
                 parameter("order", "likes_count.desc,created_at.desc")
                 parameter("limit", limit.toString())
             }
@@ -1560,7 +1613,7 @@ class SupabaseService @Inject constructor(
     // (те, кто слушает тех же артистов)
     suspend fun getRecommendedPlaylists(accessToken: String, favoriteArtistNames: List<String>, limit: Int = 20): List<PlaylistResponse> {
         return try {
-            // Берём просто публичные плейлисты, исключая свои
+            // Берём просто публичные плейлисты, исключая свои и синтез-плейлисты
             val userId = getUser(accessToken)?.id ?: return emptyList()
             val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
             val response = http.get {
@@ -1568,7 +1621,9 @@ class SupabaseService @Inject constructor(
                 header("apikey", anonKey)
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
                 parameter("is_public", "eq.true")
+                parameter("is_synthesis", "eq.false")
                 parameter("user_id", "neq.$userId")
+                parameter("select", "id,user_id,name,description,cover_url,created_at,track_count,is_public,is_synthesis,synthesis_code,likes_count,username,user_avatar_url")
                 parameter("order", "likes_count.desc,created_at.desc")
                 parameter("limit", limit.toString())
             }
@@ -1580,24 +1635,106 @@ class SupabaseService @Inject constructor(
         return try {
             val userId = getUser(accessToken)?.id ?: return emptyList()
             val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
-            val response = http.get {
+            val selectFields = "id,user_id,name,description,cover_url,created_at,track_count,is_public,is_synthesis,synthesis_code,likes_count,username,user_avatar_url"
+
+            // Свои плейлисты
+            val myResponse = http.get {
                 url("$baseUrl/rest/v1/playlists")
                 header("apikey", anonKey)
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
                 parameter("user_id", "eq.$userId")
+                parameter("select", selectFields)
                 parameter("order", "created_at.desc")
             }
-            if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
-        } catch (e: Exception) { emptyList() }
+            val myPlaylists = if (myResponse.status.isSuccess())
+                json.decodeFromString<List<PlaylistResponse>>(myResponse.bodyAsText()) else emptyList()
+
+            // Синтез-плейлисты где я участник (но не владелец)
+            // Сначала находим session_id сессий, где я участник
+            @Serializable data class ParticipantRow(@SerialName("session_id") val sessionId: String)
+            val participantResponse = http.get {
+                url("$baseUrl/rest/v1/synthesis_participants")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("user_id", "eq.$userId")
+                parameter("select", "session_id")
+            }
+            val sessionIds = if (participantResponse.status.isSuccess()) {
+                json.decodeFromString<List<ParticipantRow>>(participantResponse.bodyAsText()).map { it.sessionId }
+            } else emptyList()
+
+            val synthesisPlaylists = if (sessionIds.isNotEmpty()) {
+                // Находим playlist_id из этих сессий
+                @Serializable data class SessionRow(@SerialName("playlist_id") val playlistId: String?)
+                val sessionsResponse = http.get {
+                    url("$baseUrl/rest/v1/synthesis_sessions")
+                    header("apikey", anonKey)
+                    header(HttpHeaders.Authorization, "Bearer $accessToken")
+                    parameter("id", "in.(${sessionIds.joinToString(",")})")
+                    parameter("select", "playlist_id")
+                }
+                val playlistIds = if (sessionsResponse.status.isSuccess()) {
+                    json.decodeFromString<List<SessionRow>>(sessionsResponse.bodyAsText())
+                        .mapNotNull { it.playlistId }
+                } else emptyList()
+
+                if (playlistIds.isNotEmpty()) {
+                    val synthPlaylistsResponse = http.get {
+                        url("$baseUrl/rest/v1/playlists")
+                        header("apikey", anonKey)
+                        header(HttpHeaders.Authorization, "Bearer $accessToken")
+                        parameter("id", "in.(${playlistIds.joinToString(",")})")
+                        parameter("user_id", "neq.$userId") // только чужие (свои уже есть)
+                        parameter("select", selectFields)
+                        parameter("order", "created_at.desc")
+                    }
+                    if (synthPlaylistsResponse.status.isSuccess())
+                        json.decodeFromString<List<PlaylistResponse>>(synthPlaylistsResponse.bodyAsText())
+                    else emptyList()
+                } else emptyList()
+            } else emptyList()
+
+            // Объединяем, убираем дубли
+            (myPlaylists + synthesisPlaylists).distinctBy { it.id }
+        } catch (e: Exception) {
+            android.util.Log.e("SupabaseService", "getMyPlaylists error: ${e.message}")
+            emptyList()
+        }
     }
 
     suspend fun deletePlaylist(accessToken: String, playlistId: String): Result<Unit> {
         return runCatching {
             val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
-            val response = http.delete {
-                url("$baseUrl/rest/v1/playlists?id=eq.$playlistId&user_id=eq.$userId")
+            // Для синтез-плейлистов разрешаем удаление любому участнику
+            // Сначала проверяем — это синтез?
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val checkResponse = http.get {
+                url("$baseUrl/rest/v1/playlists")
                 header("apikey", anonKey)
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("id", "eq.$playlistId")
+                parameter("select", "is_synthesis")
+                parameter("limit", "1")
+            }
+            @Serializable data class PlaylistCheck(@SerialName("is_synthesis") val isSynthesis: Boolean = false)
+            val isSynthesis = if (checkResponse.status.isSuccess()) {
+                json.decodeFromString<List<PlaylistCheck>>(checkResponse.bodyAsText()).firstOrNull()?.isSynthesis ?: false
+            } else false
+
+            val response = if (isSynthesis) {
+                // Синтез-плейлист — удаляем без проверки владельца
+                http.delete {
+                    url("$baseUrl/rest/v1/playlists?id=eq.$playlistId")
+                    header("apikey", anonKey)
+                    header(HttpHeaders.Authorization, "Bearer $accessToken")
+                }
+            } else {
+                // Обычный плейлист — только владелец
+                http.delete {
+                    url("$baseUrl/rest/v1/playlists?id=eq.$playlistId&user_id=eq.$userId")
+                    header("apikey", anonKey)
+                    header(HttpHeaders.Authorization, "Bearer $accessToken")
+                }
             }
             if (!response.status.isSuccess()) throw IllegalStateException("Ошибка удаления: ${response.status}")
         }
@@ -1652,6 +1789,7 @@ class SupabaseService @Inject constructor(
         @SerialName("invite_code") val inviteCode: String,
         val name: String = "Синтез",
         val status: String = "pending",
+        @SerialName("playlist_id") val playlistId: String? = null,
         @SerialName("created_at") val createdAt: String? = null
     )
 
@@ -1670,36 +1808,98 @@ class SupabaseService @Inject constructor(
             val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
             val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
             val body = buildString {
-                append("{\"creator_id\":\"$userId\"")
-                creatorUsername?.let { append(",\"creator_username\":\"${it.replace("\"", "\\\"")}\"") }
+                append("{\"p_creator_id\":\"$userId\"")
+                val uname = creatorUsername?.replace("\"", "\\\"") ?: ""
+                append(",\"p_creator_username\":\"$uname\"")
                 append("}")
             }
             val response = http.post {
-                url("$baseUrl/rest/v1/synthesis_sessions")
+                url("$baseUrl/rest/v1/rpc/get_or_create_synthesis_session")
                 header("apikey", anonKey)
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
-                header("Prefer", "return=representation")
                 contentType(ContentType.Application.Json)
                 setBody(body)
             }
             if (!response.status.isSuccess()) throw IllegalStateException("Ошибка создания синтеза: ${response.status}\n${response.bodyAsText()}")
-            json.decodeFromString<List<SynthesisSession>>(response.bodyAsText()).first()
+            json.decodeFromString<SynthesisSession>(response.bodyAsText())
+        }
+    }
+
+    /**
+     * Проверяет, существует ли уже синтез между двумя пользователями.
+     * Возвращает playlist_id если да, иначе null.
+     */
+    suspend fun findExistingSynthesis(accessToken: String, otherUserId: String): String? {
+        return try {
+            val myUserId = getUser(accessToken)?.id ?: return null
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.post {
+                url("$baseUrl/rest/v1/rpc/find_existing_synthesis")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody("{\"p_user1_id\":\"$myUserId\",\"p_user2_id\":\"$otherUserId\"}")
+            }
+            if (response.status.isSuccess()) {
+                val text = response.bodyAsText().trim().removeSurrounding("\"")
+                if (text == "null" || text.isBlank()) null else text
+            } else null
+        } catch (e: Exception) {
+            android.util.Log.w("SupabaseService", "findExistingSynthesis error: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Проверяет, состоит ли текущий пользователь уже в каком-либо синтезе с хостом сессии.
+     * Возвращает playlist_id существующего синтеза или null.
+     */
+    suspend fun findExistingSynthesisBySession(accessToken: String, sessionId: String): String? {
+        return try {
+            val myUserId = getUser(accessToken)?.id ?: return null
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            // Получаем creator_id сессии
+            val sessionResponse = http.get {
+                url("$baseUrl/rest/v1/synthesis_sessions")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("id", "eq.$sessionId")
+                parameter("select", "creator_id,playlist_id")
+                parameter("limit", "1")
+            }
+            if (!sessionResponse.status.isSuccess()) return null
+            @Serializable data class SessionInfo(
+                @SerialName("creator_id") val creatorId: String,
+                @SerialName("playlist_id") val playlistId: String? = null
+            )
+            val session = json.decodeFromString<List<SessionInfo>>(sessionResponse.bodyAsText()).firstOrNull() ?: return null
+            findExistingSynthesis(accessToken, session.creatorId)
+        } catch (e: Exception) {
+            null
         }
     }
 
     suspend fun getSynthesisSession(accessToken: String, inviteCode: String): Result<SynthesisSession> {
         return runCatching {
             val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
-            val response = http.get {
-                url("$baseUrl/rest/v1/synthesis_sessions")
+            val code = inviteCode.trim().lowercase()
+            // Используем RPC-функцию — надёжнее чем PostgREST ilike
+            val response = http.post {
+                url("$baseUrl/rest/v1/rpc/find_synthesis_session_by_code")
                 header("apikey", anonKey)
                 header(HttpHeaders.Authorization, "Bearer $accessToken")
-                parameter("invite_code", "eq.$inviteCode")
-                parameter("limit", "1")
+                contentType(ContentType.Application.Json)
+                setBody("{\"p_invite_code\":\"$code\"}")
             }
-            if (!response.status.isSuccess()) throw IllegalStateException("Сессия не найдена")
-            json.decodeFromString<List<SynthesisSession>>(response.bodyAsText()).firstOrNull()
-                ?: throw IllegalStateException("Сессия не найдена")
+            if (!response.status.isSuccess()) {
+                android.util.Log.e("SupabaseService", "getSynthesisSession failed: ${response.status} body=${response.bodyAsText()}")
+                throw IllegalStateException("Ошибка поиска сессии: ${response.status}")
+            }
+            val text = response.bodyAsText()
+            android.util.Log.d("SupabaseService", "getSynthesisSession code=$code response=$text")
+            // RPC с SETOF возвращает массив
+            json.decodeFromString<List<SynthesisSession>>(text).firstOrNull()
+                ?: throw IllegalStateException("Синтез не найден. Проверьте код.")
         }
     }
 
@@ -1751,5 +1951,129 @@ class SupabaseService @Inject constructor(
             }
             if (response.status.isSuccess()) json.decodeFromString(response.bodyAsText()) else emptyList()
         } catch (e: Exception) { emptyList() }
+    }
+
+    /** Удаляет участника из сессии синтеза */
+    suspend fun leaveSynthesisSession(accessToken: String, sessionId: String): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            val response = http.delete {
+                url("$baseUrl/rest/v1/synthesis_participants?session_id=eq.$sessionId&user_id=eq.$userId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка выхода: ${response.status}")
+        }
+    }
+
+    /** Удаляет сессию синтеза (только создатель) */
+    suspend fun deleteSynthesisSession(accessToken: String, sessionId: String): Result<Unit> {
+        return runCatching {
+            val userId = getUser(accessToken)?.id ?: throw IllegalStateException("Не авторизован")
+            val response = http.delete {
+                url("$baseUrl/rest/v1/synthesis_sessions?id=eq.$sessionId&creator_id=eq.$userId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка удаления сессии: ${response.status}")
+        }
+    }
+
+    /**
+     * Атомарно получает или создаёт синтез-плейлист через серверную функцию.
+     * Исключает гонку данных — безопасно при параллельных вызовах.
+     * Возвращает playlist_id.
+     */
+    suspend fun getOrCreateSynthesisPlaylist(
+        accessToken: String,
+        sessionId: String,
+        hostUserId: String,
+        name: String,
+        description: String,
+        synthesisCode: String
+    ): Result<String> {
+        return runCatching {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val hostProfile = getProfileById(hostUserId)
+            val body = buildString {
+                append("{")
+                append("\"p_session_id\":\"$sessionId\",")
+                append("\"p_host_user_id\":\"$hostUserId\",")
+                append("\"p_name\":\"${name.replace("\"", "\\\"")}\",")
+                append("\"p_description\":\"${description.replace("\"", "\\\"")}\",")
+                append("\"p_synthesis_code\":\"$synthesisCode\"")
+                hostProfile?.username?.let { append(",\"p_host_username\":\"${it.replace("\"", "\\\"")}\"") }
+                hostProfile?.avatarUrl?.let { append(",\"p_host_avatar_url\":\"${it.replace("\"", "\\\"")}\"") }
+                append("}")
+            }
+            val response = http.post {
+                url("$baseUrl/rest/v1/rpc/get_or_create_synthesis_playlist")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка создания плейлиста: ${response.status}\n${response.bodyAsText()}")
+            // Функция возвращает UUID как строку
+            response.bodyAsText().trim().removeSurrounding("\"")
+        }
+    }
+
+    /** Создаёт синтез-плейлист от имени хоста (user_id = hostUserId) */
+    suspend fun createSynthesisPlaylist(accessToken: String, hostUserId: String, name: String, description: String, synthesisCode: String): Result<PlaylistResponse> {
+        return runCatching {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            // Получаем профиль хоста для username/avatar
+            val hostProfile = getProfileById(hostUserId)
+            val body = buildString {
+                append("{")
+                append("\"user_id\":\"$hostUserId\",")
+                append("\"name\":\"${name.replace("\"", "\\\"")}\",")
+                append("\"description\":\"${description.replace("\"", "\\\"")}\",")
+                hostProfile?.username?.let { append("\"username\":\"${it.replace("\"", "\\\"")}\",") }
+                hostProfile?.avatarUrl?.let { append("\"user_avatar_url\":\"${it.replace("\"", "\\\"")}\",") }
+                append("\"is_public\":false,")
+                append("\"is_synthesis\":true,")
+                append("\"synthesis_code\":\"$synthesisCode\",")
+                append("\"track_count\":0,")
+                append("\"likes_count\":0")
+                append("}")
+            }
+            val response = http.post {
+                url("$baseUrl/rest/v1/playlists")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                header("Prefer", "return=representation")
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка создания синтез-плейлиста: ${response.status}\n${response.bodyAsText()}")
+            json.decodeFromString<List<PlaylistResponse>>(response.bodyAsText()).first()
+        }
+    }
+
+    suspend fun updateSynthesisPlaylistId(accessToken: String, sessionId: String, playlistId: String): Result<Unit> {
+        return runCatching {
+            val response = http.patch {
+                url("$baseUrl/rest/v1/synthesis_sessions?id=eq.$sessionId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody("""{"playlist_id":"$playlistId"}""")
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка обновления сессии: ${response.status}")
+        }
+    }
+
+    /** Удаляет все треки из плейлиста (для пересборки) */
+    suspend fun clearPlaylistTracks(accessToken: String, playlistId: String): Result<Unit> {
+        return runCatching {
+            val response = http.delete {
+                url("$baseUrl/rest/v1/playlist_tracks?playlist_id=eq.$playlistId")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+            }
+            if (!response.status.isSuccess()) throw IllegalStateException("Ошибка очистки плейлиста: ${response.status}")
+        }
     }
 }

@@ -21,9 +21,17 @@ data class AudiusTrack(
     @SerialName("user") val artist: AudiusArtist,
     @SerialName("artwork") val artwork: JsonObject? = null,
     @SerialName("genre") val genre: String? = null,
+    @SerialName("mood") val mood: String? = null,
+    @SerialName("tags") val tags: String? = null,
     @SerialName("permalink") val permalink: String? = null,
     @SerialName("duration") val duration: Int? = null,
-    @SerialName("play_count") val playCount: Int? = null
+    @SerialName("play_count") val playCount: Int? = null,
+    @SerialName("repost_count") val repostCount: Int? = null,
+    @SerialName("favorite_count") val favoriteCount: Int? = null,
+    @SerialName("comment_count") val commentCount: Int? = null,
+    @SerialName("release_date") val releaseDate: String? = null,
+    @SerialName("is_downloadable") val isDownloadable: Boolean? = null,
+    @SerialName("description") val description: String? = null
 )
 
 @Serializable

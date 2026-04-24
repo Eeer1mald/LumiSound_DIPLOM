@@ -1,5 +1,9 @@
 package com.example.lumisound
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -10,6 +14,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.view.WindowCompat
 import com.example.lumisound.data.local.SessionManager
+import com.example.lumisound.data.player.AudioPlayerService
 import com.example.lumisound.feature.auth.navigation.AuthNavGraph
 import com.example.lumisound.ui.theme.LumiSoundTheme
 import com.example.lumisound.ui.theme.ThemeManager
@@ -27,6 +32,21 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var themeManager: ThemeManager
 
+    @Inject
+    lateinit var audioPlayerService: AudioPlayerService
+
+    // BroadcastReceiver для кнопок уведомления
+    private val mediaControlReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                "com.example.lumisound.PLAY" -> audioPlayerService.resume()
+                "com.example.lumisound.PAUSE" -> audioPlayerService.pause()
+                "com.example.lumisound.NEXT" -> audioPlayerService.seekToNext()
+                "com.example.lumisound.PREV" -> audioPlayerService.seekToPrevious()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -43,7 +63,19 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Инициализируем тему из сохранённых настроек
+        // Регистрируем receiver для кнопок уведомления
+        val filter = IntentFilter().apply {
+            addAction("com.example.lumisound.PLAY")
+            addAction("com.example.lumisound.PAUSE")
+            addAction("com.example.lumisound.NEXT")
+            addAction("com.example.lumisound.PREV")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(mediaControlReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(mediaControlReceiver, filter)
+        }
+
         themeManager.setTheme(sessionManager.getThemeMode())
 
         val synthesisCode = intent?.data?.let { uri ->
@@ -57,12 +89,15 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            // Подписываемся на ThemeManager — тема меняется реактивно без перезапуска Activity
             val themeMode by themeManager.themeMode.collectAsState()
-
             LumiSoundTheme(themeMode = themeMode) {
                 AuthNavGraph(synthesisInviteCode = synthesisCode)
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try { unregisterReceiver(mediaControlReceiver) } catch (e: Exception) {}
     }
 }

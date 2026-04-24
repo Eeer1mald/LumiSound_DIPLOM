@@ -33,6 +33,7 @@ data class SettingsUiState(
     // Таймер сна
     val sleepTimerActive: Boolean = false,
     val sleepTimerMinutes: Int = 30,
+    val sleepTimerRemainingMs: Long = 0L,
     val successMessage: String? = null,
     val error: String? = null,
     // Смена пароля
@@ -68,19 +69,30 @@ class SettingsViewModel @Inject constructor(
     private fun loadSettings() {
         val autoplay = prefs.getBoolean("autoplay", true)
         val speed = sessionManager.getFloat("playback_speed", 1f)
+        // Читаем реальное состояние таймера из сервиса (не сбрасываем при повторном входе)
+        val timerActive = audioPlayerService.isSleepTimerActive()
+        val timerRemainingMs = audioPlayerService.getSleepTimerRemainingMs()
+        // Вычисляем оставшиеся минуты для отображения
+        val timerMinutes = if (timerActive && timerRemainingMs > 0L)
+            ((timerRemainingMs + 59_000L) / 60_000L).toInt().coerceAtLeast(1)
+        else 30
         _state.value = _state.value.copy(
             autoplayEnabled = autoplay,
-            isProfilePublic = prefs.getBoolean("profile_public", false),
+            isProfilePublic = prefs.getBoolean("profile_public", true),
             showFloatingComments = sessionManager.getShowFloatingComments(),
             normalizeVolume = sessionManager.getNormalizeVolume(),
             themeMode = sessionManager.getThemeMode(),
             userEmail = sessionManager.getEmail() ?: "",
             equalizerEnabled = sessionManager.getBoolean("eq_enabled", false),
             virtualizerEnabled = sessionManager.getBoolean("virtualizer_enabled", false),
-            playbackSpeed = speed
+            playbackSpeed = speed,
+            sleepTimerActive = timerActive,
+            sleepTimerMinutes = timerMinutes,
+            sleepTimerRemainingMs = timerRemainingMs
         )
         playerStateHolder.autoplayEnabled = autoplay
         playerStateHolder.showFloatingComments = sessionManager.getShowFloatingComments()
+        playerStateHolder.sleepTimerActive = timerActive
         audioPlayerService.setNormalizeVolume(sessionManager.getNormalizeVolume())
         audioPlayerService.setPlaybackSpeed(speed)
         if (sessionManager.getBoolean("eq_enabled", false)) {
@@ -88,6 +100,16 @@ class SettingsViewModel @Inject constructor(
         }
         if (sessionManager.getBoolean("virtualizer_enabled", false)) {
             audioPlayerService.setVirtualizerEnabled(true)
+        }
+        // Загружаем реальное значение is_public из профиля
+        val token = sessionManager.getAccessToken() ?: return
+        viewModelScope.launch {
+            val realToken = authRepository.refreshTokenIfNeeded() ?: token
+            authRepository.getProfile(realToken).getOrNull()?.let { p ->
+                val isPublic = p.isPublic ?: true
+                prefs.edit().putBoolean("profile_public", isPublic).apply()
+                _state.value = _state.value.copy(isProfilePublic = isPublic)
+            }
         }
     }
 
@@ -173,6 +195,8 @@ class SettingsViewModel @Inject constructor(
 
     // ── Таймер сна ────────────────────────────────────────────────────────
 
+    fun getSleepTimerRemainingMs(): Long = audioPlayerService.getSleepTimerRemainingMs()
+
     fun setSleepTimerMinutes(minutes: Int) {
         _state.value = _state.value.copy(sleepTimerMinutes = minutes)
     }
@@ -181,14 +205,21 @@ class SettingsViewModel @Inject constructor(
         val minutes = _state.value.sleepTimerMinutes
         audioPlayerService.startSleepTimer(minutes)
         audioPlayerService.onSleepTimerFinished = {
-            _state.value = _state.value.copy(sleepTimerActive = false)
+            _state.value = _state.value.copy(sleepTimerActive = false, sleepTimerRemainingMs = 0L)
+            playerStateHolder.sleepTimerActive = false
         }
-        _state.value = _state.value.copy(sleepTimerActive = true, successMessage = "Таймер сна: $minutes мин")
+        val remainingMs = audioPlayerService.getSleepTimerRemainingMs()
+        _state.value = _state.value.copy(
+            sleepTimerActive = true,
+            sleepTimerRemainingMs = remainingMs
+        )
+        playerStateHolder.sleepTimerActive = true
     }
 
     fun cancelSleepTimer() {
         audioPlayerService.cancelSleepTimer()
-        _state.value = _state.value.copy(sleepTimerActive = false)
+        _state.value = _state.value.copy(sleepTimerActive = false, sleepTimerRemainingMs = 0L)
+        playerStateHolder.sleepTimerActive = false
     }
 
     fun setThemeMode(mode: String) {
@@ -206,8 +237,7 @@ class SettingsViewModel @Inject constructor(
                     prefs.edit().putBoolean("profile_public", isPublic).apply()
                     _state.value = _state.value.copy(
                         isLoading = false,
-                        isProfilePublic = isPublic,
-                        successMessage = if (isPublic) "Профиль теперь публичный" else "Профиль теперь приватный"
+                        isProfilePublic = isPublic
                     )
                 }
                 .onFailure { e ->
@@ -245,8 +275,7 @@ class SettingsViewModel @Inject constructor(
                     _state.value = _state.value.copy(
                         isChangingPassword = false,
                         newPassword = "",
-                        confirmPassword = "",
-                        successMessage = "Пароль успешно изменён"
+                        confirmPassword = ""
                     )
                 }
                 .onFailure { e ->
@@ -262,7 +291,6 @@ class SettingsViewModel @Inject constructor(
     fun clearCache() {
         _state.value = _state.value.copy(isClearingCache = true)
         viewModelScope.launch {
-            // Очищаем Coil image cache
             try {
                 val imageLoader = coil.ImageLoader(context)
                 imageLoader.memoryCache?.clear()
@@ -272,8 +300,7 @@ class SettingsViewModel @Inject constructor(
             }
             _state.value = _state.value.copy(
                 isClearingCache = false,
-                cacheCleared = true,
-                successMessage = "Кэш очищен"
+                cacheCleared = true
             )
         }
     }

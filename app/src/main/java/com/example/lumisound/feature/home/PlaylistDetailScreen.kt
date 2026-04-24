@@ -58,7 +58,10 @@ fun PlaylistDetailScreen(
     val focusManager = LocalFocusManager.current
     var showSearch by remember { mutableStateOf(false) }
     var showDeletePlaylistDialog by remember { mutableStateOf(false) }
+    var showLeaveSynthesisDialog by remember { mutableStateOf(false) }
     val isOwner = state.currentUserId != null && state.playlist?.userId == state.currentUserId
+    val isSynthesis = playlist.isSynthesis || state.playlist?.isSynthesis == true
+    val synthesisViewModel: SynthesisViewModel = hiltViewModel()
     // Актуальный счётчик лайков из playlistViewModel — обновляется оптимистично при toggleLike
     val playlistVmState by playlistViewModel.state.collectAsState()
     val isLiked = playlistVmState.likedPlaylistIds.contains(playlist.id)
@@ -75,6 +78,22 @@ fun PlaylistDetailScreen(
         viewModel.setOnCoverUpdated { id, url -> playlistViewModel.updatePlaylistCoverLocally(id, url) }
         viewModel.setOnNameUpdated { id, name, desc, count -> playlistViewModel.updatePlaylistNameLocally(id, name, desc, count) }
         playlistViewModel.loadLikeStatus(playlist.id)
+        // Для синтез-плейлиста загружаем сессию
+        if (isSynthesis && !playlist.synthesisCode.isNullOrBlank()) {
+            synthesisViewModel.loadSessionByCode(playlist.synthesisCode)
+        }
+    }
+
+    // Обработка выхода из синтеза
+    val synthesisState by synthesisViewModel.state.collectAsState()
+    var leaveTriggered by remember { mutableStateOf(false) }
+    LaunchedEffect(synthesisState.openPlaylistId, leaveTriggered) {
+        val result = synthesisState.openPlaylistId
+        if (leaveTriggered && (result == "DELETED" || result == "LEFT")) {
+            synthesisViewModel.clearOpenPlaylist()
+            playlistViewModel.loadPlaylists()
+            onDeleted()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background).statusBarsPadding()) {
@@ -89,8 +108,16 @@ fun PlaylistDetailScreen(
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = LocalAppColors.current.onBackground, modifier = Modifier.size(18.dp))
                     }
-                    Text(if (isOwner) "Мой плейлист" else "Плейлист", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
-                    if (isOwner) {
+                    Text(
+                        when {
+                            isSynthesis -> "Синтез"
+                            isOwner -> "Мой плейлист"
+                            else -> "Плейлист"
+                        },
+                        color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp)
+                    )
+                    if (isOwner && !isSynthesis) {
                         Box(modifier = Modifier.size(36.dp).background(Color.White.copy(alpha = 0.08f), CircleShape)
                             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.toggleVisibility() }, contentAlignment = Alignment.Center) {
                             Icon(if (state.playlist?.isPublic == true) Icons.Default.Public else Icons.Default.Lock, null,
@@ -100,6 +127,15 @@ fun PlaylistDetailScreen(
                         Box(modifier = Modifier.size(36.dp).background(Color.White.copy(alpha = 0.08f), CircleShape)
                             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showDeletePlaylistDialog = true }, contentAlignment = Alignment.Center) {
                             Icon(Icons.Default.Delete, null, tint = Color(0xFFFF5C6C).copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    // Кнопка выхода из синтеза
+                    if (isSynthesis) {
+                        Box(modifier = Modifier.size(36.dp).background(Color(0xFFFF5C6C).copy(alpha = 0.1f), CircleShape)
+                            .border(1.dp, Color(0xFFFF5C6C).copy(alpha = 0.3f), CircleShape)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showLeaveSynthesisDialog = true },
+                            contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.ExitToApp, null, tint = Color(0xFFFF5C6C), modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -127,8 +163,8 @@ fun PlaylistDetailScreen(
                                 }
                             }
                         }
-                        // Лайк прямо под обложкой — только для чужих
-                        if (!isOwner) {
+                        // Лайк прямо под обложкой — только для чужих и не синтез
+                        if (!isOwner && !isSynthesis) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -223,8 +259,8 @@ fun PlaylistDetailScreen(
                 }
             }
 
-            // Кнопки действий — только для владельца
-            if (isOwner) {
+            // Кнопки действий — только для владельца и не синтез-плейлиста
+            if (isOwner && !isSynthesis) {
                 item(key = "actions") {
                     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                         Box(modifier = Modifier.background(LocalAppColors.current.surface, RoundedCornerShape(22.dp)).border(1.dp, GradientStart.copy(alpha = 0.4f), RoundedCornerShape(22.dp))
@@ -275,7 +311,7 @@ fun PlaylistDetailScreen(
 
             // Треки
             items(state.tracks.take(200), key = { it.id }) { track ->
-                PlaylistTrackRow(track = track, isOwner = isOwner,
+                PlaylistTrackRow(track = track, isOwner = isOwner && !isSynthesis,
                     onPlay = {
                         // Устанавливаем весь плейлист для навигации между треками
                         val allTracks = state.tracks.map { t ->
@@ -288,8 +324,8 @@ fun PlaylistDetailScreen(
                     onRemove = { viewModel.removeTrack(track.trackId) })
             }
 
-            // Кнопка добавить ещё
-            if (isOwner && state.tracks.isNotEmpty()) {
+            // Кнопка добавить ещё — только не для синтеза
+            if (isOwner && !isSynthesis && state.tracks.isNotEmpty()) {
                 item(key = "add_more") {
                     Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
                         Box(modifier = Modifier.background(GradientStart.copy(alpha = 0.12f), RoundedCornerShape(22.dp)).border(1.dp, GradientStart.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
@@ -320,11 +356,52 @@ fun PlaylistDetailScreen(
             dismissButton = { TextButton(onClick = { showDeletePlaylistDialog = false }) { Text("Отмена", color = LocalAppColors.current.secondary) } },
             containerColor = LocalAppColors.current.surface, titleContentColor = LocalAppColors.current.onBackground, textContentColor = LocalAppColors.current.secondary)
     }
+
+    if (showLeaveSynthesisDialog) {
+        val synthesisStateLocal by synthesisViewModel.state.collectAsState()
+        AlertDialog(
+            onDismissRequest = { showLeaveSynthesisDialog = false },
+            title = { Text("Покинуть синтез?", color = LocalAppColors.current.onBackground) },
+            text = {
+                if (synthesisStateLocal.isBuildingPlaylist) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Text("Обновляем плейлист...", color = LocalAppColors.current.secondary)
+                    }
+                } else {
+                    Text("Вы покинете синтез. Если останется меньше 2 участников — плейлист будет удалён.", color = LocalAppColors.current.secondary)
+                }
+            },
+            confirmButton = {
+                if (!synthesisStateLocal.isBuildingPlaylist) {
+                    TextButton(onClick = {
+                        val code = state.playlist?.synthesisCode ?: playlist.synthesisCode ?: ""
+                        val pid = playlist.id
+                        leaveTriggered = true
+                        synthesisViewModel.leaveSynthesis(code, pid, playlistViewModel)
+                    }) { Text("Покинуть", color = Color(0xFFFF5C6C), fontWeight = FontWeight.SemiBold) }
+                }
+            },
+            dismissButton = {
+                if (!synthesisStateLocal.isBuildingPlaylist) {
+                    TextButton(onClick = { showLeaveSynthesisDialog = false }) { Text("Отмена", color = LocalAppColors.current.secondary) }
+                }
+            },
+            containerColor = LocalAppColors.current.surface
+        )
+    }
 }
 
 @Composable
 private fun PlaylistTrackRow(track: SupabaseService.PlaylistTrackResponse, isOwner: Boolean = true, onPlay: () -> Unit, onRemove: () -> Unit) {
     var showRemoveDialog by remember { mutableStateOf(false) }
+    var showContributorsDialog by remember { mutableStateOf(false) }
+
+    // Парсим несколько участников (хранятся через запятую)
+    val usernames = track.addedByUsername?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+    val avatars = track.addedByAvatar?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+    val hasMultiple = usernames.size > 1
+
     Row(modifier = Modifier.fillMaxWidth().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onPlay() }.padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(LocalAppColors.current.surface), contentAlignment = Alignment.Center) {
@@ -337,11 +414,40 @@ private fun PlaylistTrackRow(track: SupabaseService.PlaylistTrackResponse, isOwn
             Text(track.trackTitle, color = LocalAppColors.current.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(track.trackArtist, color = LocalAppColors.current.secondary, fontSize = 12.sp, maxLines = 1)
         }
-        if (!track.addedByUsername.isNullOrBlank()) {
-            Box(modifier = Modifier.size(24.dp).clip(CircleShape).background(GradientStart.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
-                if (!track.addedByAvatar.isNullOrEmpty()) {
-                    AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(track.addedByAvatar).crossfade(false).build(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                } else { Text(track.addedByUsername!!.take(1).uppercase(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+        // Аватарки участников — стопкой если несколько
+        if (usernames.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .width(if (hasMultiple) 36.dp else 24.dp)
+                    .height(24.dp)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                        if (hasMultiple) showContributorsDialog = true
+                    }
+            ) {
+                // Вторая аватарка (сзади) — только если несколько
+                if (hasMultiple && avatars.size >= 2) {
+                    Box(
+                        modifier = Modifier.size(24.dp).offset(x = 12.dp).clip(CircleShape)
+                            .background(GradientStart.copy(alpha = 0.3f)).border(1.dp, LocalAppColors.current.background, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AsyncImage(model = avatars.getOrNull(1), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    }
+                }
+                // Первая аватарка (спереди)
+                Box(
+                    modifier = Modifier.size(24.dp).clip(CircleShape).background(GradientStart.copy(alpha = 0.2f))
+                        .border(1.dp, LocalAppColors.current.background, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val firstAvatar = avatars.firstOrNull()
+                    if (!firstAvatar.isNullOrEmpty()) {
+                        AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(firstAvatar).crossfade(false).build(),
+                            contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    } else {
+                        Text(usernames.first().take(1).uppercase(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
         if (isOwner) {
@@ -358,6 +464,34 @@ private fun PlaylistTrackRow(track: SupabaseService.PlaylistTrackResponse, isOwn
             confirmButton = { TextButton(onClick = { showRemoveDialog = false; onRemove() }) { Text("Удалить", color = Color(0xFFFF5C6C), fontWeight = FontWeight.SemiBold) } },
             dismissButton = { TextButton(onClick = { showRemoveDialog = false }) { Text("Отмена", color = LocalAppColors.current.secondary) } },
             containerColor = LocalAppColors.current.surface, titleContentColor = LocalAppColors.current.onBackground, textContentColor = LocalAppColors.current.secondary)
+    }
+    // Диалог с участниками трека
+    if (showContributorsDialog) {
+        AlertDialog(
+            onDismissRequest = { showContributorsDialog = false },
+            title = { Text("Трек у участников", color = LocalAppColors.current.onBackground, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    usernames.forEachIndexed { idx, name ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(GradientStart.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
+                                val av = avatars.getOrNull(idx)
+                                if (!av.isNullOrEmpty()) {
+                                    AsyncImage(model = av, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                } else {
+                                    Text(name.take(1).uppercase(), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Text(name, color = LocalAppColors.current.onBackground, fontSize = 14.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showContributorsDialog = false }) { Text("OK", color = GradientStart) }
+            },
+            containerColor = LocalAppColors.current.surface
+        )
     }
 }
 

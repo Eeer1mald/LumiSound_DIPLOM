@@ -42,6 +42,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.lumisound.BuildConfig
 import com.example.lumisound.ui.theme.*
 import com.example.lumisound.ui.theme.LocalAppColors
+import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
@@ -55,6 +56,23 @@ fun SettingsScreen(
     var showNewPassword by remember { mutableStateOf(false) }
     var showConfirmPassword by remember { mutableStateOf(false) }
     var showEqualizer by remember { mutableStateOf(false) }
+    var showSleepTimerDialog by remember { mutableStateOf(false) }
+    var sleepTimerRemainingText by remember { mutableStateOf("") }
+
+    // Обновляем оставшееся время каждую секунду когда диалог открыт
+    LaunchedEffect(showSleepTimerDialog) {
+        if (showSleepTimerDialog) {
+            while (showSleepTimerDialog) {
+                val remainingMs = viewModel.getSleepTimerRemainingMs()
+                if (remainingMs <= 0L) { showSleepTimerDialog = false; break }
+                val totalSec = remainingMs / 1000
+                val min = totalSec / 60
+                val sec = totalSec % 60
+                sleepTimerRemainingText = "${min}:${sec.toString().padStart(2, '0')}"
+                kotlinx.coroutines.delay(1000L)
+            }
+        }
+    }
 
     // Открываем экран эквалайзера
     if (showEqualizer) {
@@ -97,34 +115,6 @@ fun SettingsScreen(
                 .padding(top = 68.dp) // высота хедера
                 .verticalScroll(rememberScrollState())
         ) {
-
-            // ── Уведомления ─────────────────────────────────────────
-            if (state.successMessage != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                        .background(GradientStart.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Default.CheckCircle, null, tint = GradientStart, modifier = Modifier.size(16.dp))
-                    Text(state.successMessage!!, color = GradientStart, fontSize = 13.sp)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-            }
-            if (state.error != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                        .background(Color(0xFFFF5C6C).copy(alpha = 0.1f), RoundedCornerShape(12.dp))
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Default.Error, null, tint = Color(0xFFFF5C6C), modifier = Modifier.size(16.dp))
-                    Text(state.error!!, color = Color(0xFFFF5C6C), fontSize = 13.sp)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-            }
 
             // ══════════════════════════════════════════════════════
             // АККАУНТ
@@ -349,9 +339,20 @@ fun SettingsScreen(
                 SleepTimerCard(
                     isActive = state.sleepTimerActive,
                     selectedMinutes = state.sleepTimerMinutes,
+                    remainingMs = state.sleepTimerRemainingMs,
                     onMinutesChange = { viewModel.setSleepTimerMinutes(it) },
                     onStart = { viewModel.startSleepTimer() },
-                    onCancel = { viewModel.cancelSleepTimer() }
+                    onCancel = { viewModel.cancelSleepTimer() },
+                    onTimerClick = {
+                        val remaining = viewModel.getSleepTimerRemainingMs()
+                        if (remaining > 0L) {
+                            val totalSec = remaining / 1000
+                            val min = totalSec / 60
+                            val sec = totalSec % 60
+                            sleepTimerRemainingText = "${min}:${sec.toString().padStart(2, '0')}"
+                            showSleepTimerDialog = true
+                        }
+                    }
                 )
             }
 
@@ -375,7 +376,7 @@ fun SettingsScreen(
                 SettingsToggleCard(
                     icon = Icons.Default.Public,
                     title = "Публичный профиль",
-                    subtitle = if (state.isProfilePublic) "Ваш профиль виден всем" else "Ваш профиль скрыт",
+                    subtitle = "Разрешить другим видеть ваш профиль",
                     checked = state.isProfilePublic,
                     onCheckedChange = { viewModel.setProfilePublic(it) },
                     isLoading = state.isLoading
@@ -456,6 +457,36 @@ fun SettingsScreen(
                 TextButton(onClick = { showLogoutDialog = false }) { Text("Отмена", color = LocalAppColors.current.secondary) }
             },
             containerColor = LocalAppColors.current.surface, titleContentColor = LocalAppColors.current.onBackground, textContentColor = LocalAppColors.current.secondary
+        )
+    }
+
+    if (showSleepTimerDialog) {
+        AlertDialog(
+            onDismissRequest = { showSleepTimerDialog = false },
+            title = { Text("Таймер сна", color = LocalAppColors.current.onBackground) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Музыка выключится через $sleepTimerRemainingText",
+                        color = LocalAppColors.current.secondary,
+                        fontSize = 14.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSleepTimerDialog = false }) {
+                    Text("OK", color = GradientStart)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showSleepTimerDialog = false
+                    viewModel.cancelSleepTimer()
+                }) {
+                    Text("Отменить таймер", color = Color(0xFFFF5C6C))
+                }
+            },
+            containerColor = LocalAppColors.current.surface
         )
     }
 }
@@ -591,15 +622,18 @@ private fun SettingsInfoCard(
 @Composable
 private fun SpeedCard(speed: Float, onSpeedChange: (Float) -> Unit) {
     val speeds = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
-    val minVal = 0.5f
-    val maxVal = 2f
-    // Всегда держим значение на ближайшей отметке
-    var snappedSpeed by remember { mutableStateOf(
-        speeds.minByOrNull { kotlin.math.abs(it - speed) } ?: speed
-    ) }
+    val labels = listOf("0.5x", "0.75x", "1x", "1.25x", "1.5x", "2.0x")
+    val n = speeds.size // 6
+
+    // Индекс — единственный источник истины
+    var currentIdx by remember {
+        mutableIntStateOf(
+            speeds.indexOfFirst { kotlin.math.abs(it - speed) < 0.01f }.let { if (it < 0) 2 else it }
+        )
+    }
     LaunchedEffect(speed) {
-        val s = speeds.minByOrNull { kotlin.math.abs(it - speed) } ?: speed
-        snappedSpeed = s
+        val idx = speeds.indexOfFirst { kotlin.math.abs(it - speed) < 0.01f }
+        if (idx >= 0 && idx != currentIdx) currentIdx = idx
     }
 
     Box(
@@ -608,14 +642,15 @@ private fun SpeedCard(speed: Float, onSpeedChange: (Float) -> Unit) {
             .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
             .padding(16.dp)
     ) {
-        Column {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    modifier = Modifier.size(40.dp).background(GradientStart.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                    modifier = Modifier.size(40.dp)
+                        .background(GradientStart.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(Icons.Default.Speed, null, tint = GradientStart, modifier = Modifier.size(20.dp))
@@ -623,22 +658,28 @@ private fun SpeedCard(speed: Float, onSpeedChange: (Float) -> Unit) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Скорость воспроизведения", color = LocalAppColors.current.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Text(
-                        if (snappedSpeed == 1f) "Обычная (1x)" else "${snappedSpeed}x",
+                        if (speeds[currentIdx] == 1f) "Обычная (1x)" else "${speeds[currentIdx]}x",
                         color = GradientStart, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
                     )
                 }
             }
+
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Стандартный Material3 Slider с steps — thumb прыгает только на отметки
+            // Slider по индексу 0..(n-1) с steps=(n-2) — thumb стоит РОВНО на целых позициях
+            // valueRange = 0f..5f, steps = 4 → 6 дискретных позиций: 0,1,2,3,4,5
             Slider(
-                value = snappedSpeed,
+                value = currentIdx.toFloat(),
                 onValueChange = { raw ->
-                    snappedSpeed = speeds.minByOrNull { kotlin.math.abs(it - raw) } ?: raw
+                    val newIdx = raw.roundToInt().coerceIn(0, n - 1)
+                    if (newIdx != currentIdx) {
+                        currentIdx = newIdx
+                        onSpeedChange(speeds[newIdx])
+                    }
                 },
-                onValueChangeFinished = { onSpeedChange(snappedSpeed) },
-                valueRange = minVal..maxVal,
-                steps = speeds.size - 2, // 4 шага между 6 значениями
+                onValueChangeFinished = { onSpeedChange(speeds[currentIdx]) },
+                valueRange = 0f..(n - 1).toFloat(),
+                steps = n - 2, // 4 промежуточных = 6 позиций
                 modifier = Modifier.fillMaxWidth(),
                 colors = SliderDefaults.colors(
                     thumbColor = GradientStart,
@@ -649,18 +690,17 @@ private fun SpeedCard(speed: Float, onSpeedChange: (Float) -> Unit) {
                 )
             )
 
-            // Подписи — SpaceBetween с padding 10dp чтобы совпасть с thumb padding Slider
+            // Подписи — SpaceBetween с padding 10dp (компенсация thumb padding Slider)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                speeds.forEach { s ->
-                    val isActive = s == snappedSpeed
+                labels.forEachIndexed { idx, label ->
                     Text(
-                        text = if (s == 1f) "1x" else "${s}x",
-                        color = if (isActive) GradientStart else LocalAppColors.current.secondary,
+                        text = label,
+                        color = if (idx == currentIdx) GradientStart else LocalAppColors.current.secondary,
                         fontSize = 10.sp,
-                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+                        fontWeight = if (idx == currentIdx) FontWeight.Bold else FontWeight.Normal
                     )
                 }
             }
@@ -794,13 +834,33 @@ private fun formatFreq(hz: Int): String = when {
 private fun SleepTimerCard(
     isActive: Boolean,
     selectedMinutes: Int,
+    remainingMs: Long = 0L,
     onMinutesChange: (Int) -> Unit,
     onStart: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    onTimerClick: (() -> Unit)? = null
 ) {
     val options = listOf(5, 10, 15, 20, 30, 45, 60, 90)
-    // Локальное значение для плавного движения ползунка
-    var localMinutes by remember(selectedMinutes) { mutableStateOf(selectedMinutes.toFloat()) }
+    val labels = listOf("5м", "10м", "15м", "20м", "30м", "45м", "60м", "90м")
+    val n = options.size
+
+    var currentIdx by remember {
+        mutableIntStateOf(
+            options.indexOfFirst { it == selectedMinutes }.let { if (it < 0) 2 else it }
+        )
+    }
+    LaunchedEffect(selectedMinutes) {
+        val idx = options.indexOfFirst { it == selectedMinutes }
+        if (idx >= 0 && idx != currentIdx) currentIdx = idx
+    }
+
+    // Форматируем оставшееся время
+    val remainingText = if (isActive && remainingMs > 0L) {
+        val totalSec = remainingMs / 1000
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        "${min}:${sec.toString().padStart(2, '0')}"
+    } else null
 
     Box(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
@@ -819,7 +879,8 @@ private fun SleepTimerCard(
                         .background(
                             if (isActive) GradientStart.copy(alpha = 0.2f) else GradientStart.copy(alpha = 0.15f),
                             RoundedCornerShape(10.dp)
-                        ),
+                        )
+                        .then(if (isActive && onTimerClick != null) Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTimerClick() } else Modifier),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(Icons.Default.Bedtime, null, tint = GradientStart, modifier = Modifier.size(20.dp))
@@ -827,10 +888,10 @@ private fun SleepTimerCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Таймер сна", color = LocalAppColors.current.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Text(
-                        if (isActive) "Активен: $selectedMinutes мин" else "${selectedMinutes} мин",
-                        color = if (isActive) GradientStart else GradientStart,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
+                        if (isActive && remainingText != null) "Осталось: $remainingText"
+                        else if (isActive) "Активен"
+                        else "${options[currentIdx]} мин",
+                        color = GradientStart, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
                     )
                 }
             }
@@ -838,17 +899,19 @@ private fun SleepTimerCard(
             if (!isActive) {
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Ползунок
+                // Slider по индексу 0..(n-1) — точно как SpeedCard
                 Slider(
-                    value = localMinutes,
-                    onValueChange = { localMinutes = it },
-                    onValueChangeFinished = {
-                        // Snap к ближайшей отметке при отпускании
-                        val snapped = options.minByOrNull { kotlin.math.abs(it - localMinutes) } ?: selectedMinutes
-                        localMinutes = snapped.toFloat()
-                        onMinutesChange(snapped)
+                    value = currentIdx.toFloat(),
+                    onValueChange = { raw ->
+                        val newIdx = raw.roundToInt().coerceIn(0, n - 1)
+                        if (newIdx != currentIdx) {
+                            currentIdx = newIdx
+                            onMinutesChange(options[newIdx])
+                        }
                     },
-                    valueRange = options.first().toFloat()..options.last().toFloat(),
+                    onValueChangeFinished = { onMinutesChange(options[currentIdx]) },
+                    valueRange = 0f..(n - 1).toFloat(),
+                    steps = n - 2, // 6 промежуточных = 8 позиций
                     modifier = Modifier.fillMaxWidth(),
                     colors = SliderDefaults.colors(
                         thumbColor = GradientStart,
@@ -859,18 +922,17 @@ private fun SleepTimerCard(
                     )
                 )
 
-                // Подписи отметок — показываем только часть чтобы не перекрывались
+                // Подписи — SpaceBetween с padding 10dp
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    listOf(5, 15, 30, 60, 90).forEach { m ->
-                        val isActive2 = options.minByOrNull { kotlin.math.abs(it - localMinutes) } == m
+                    labels.forEachIndexed { idx, label ->
                         Text(
-                            "${m}м",
-                            color = if (isActive2) GradientStart else LocalAppColors.current.secondary,
+                            text = label,
+                            color = if (idx == currentIdx) GradientStart else LocalAppColors.current.secondary,
                             fontSize = 10.sp,
-                            fontWeight = if (isActive2) FontWeight.Bold else FontWeight.Normal
+                            fontWeight = if (idx == currentIdx) FontWeight.Bold else FontWeight.Normal
                         )
                     }
                 }
@@ -878,7 +940,7 @@ private fun SleepTimerCard(
                 Spacer(modifier = Modifier.height(12.dp))
                 Box(
                     modifier = Modifier.fillMaxWidth()
-                        .background(brush = androidx.compose.ui.graphics.Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(10.dp))
+                        .background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(10.dp))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onStart() }
                         .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
