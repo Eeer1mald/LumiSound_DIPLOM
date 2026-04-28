@@ -29,11 +29,24 @@
       border-radius: 50%; display: flex; align-items: center; justify-content: center;
       font-size: 40px;
     }
+    .icon-loading {
+      background: rgba(255,255,255,0.1);
+      border: 2px solid rgba(123,109,255,0.4);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .icon-error {
+      background: linear-gradient(135deg, #FF5C6C, #ff8a65);
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
     h1 {
       font-size: 28px; font-weight: 700; margin-bottom: 12px;
       background: linear-gradient(135deg, #7B6DFF 0%, #FF5C6C 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
+    h1.error-title { background: none; -webkit-text-fill-color: #FF5C6C; color: #FF5C6C; }
     p {
       font-size: 16px; line-height: 1.6;
       color: rgba(255,255,255,0.7); margin-bottom: 12px;
@@ -64,31 +77,98 @@
     }
     .button:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(123,109,255,0.4); }
     .footer { margin-top: 32px; font-size: 14px; color: rgba(255,255,255,0.4); }
+    #loadingBlock, #successBlock, #errorBlock { display: none; }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="icon">✓</div>
-    <h1>Email подтверждён!</h1>
-    <p>Ваш email успешно подтверждён.<br>Теперь вы можете войти в приложение.</p>
 
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">1</div>
-        <span>Откройте приложение LumiSound</span>
-      </div>
-      <div class="step">
-        <div class="step-num">2</div>
-        <span>Нажмите «Войти»</span>
-      </div>
-      <div class="step">
-        <div class="step-num">3</div>
-        <span>Введите email и пароль, которые вы указали при регистрации</span>
-      </div>
+    <!-- Загрузка -->
+    <div id="loadingBlock">
+      <div class="icon icon-loading">⏳</div>
+      <h1>Подтверждаем...</h1>
+      <p>Пожалуйста, подождите</p>
     </div>
 
-    <a href="lumisound://auth.callback" class="button">Открыть приложение</a>
+    <!-- Успех -->
+    <div id="successBlock">
+      <div class="icon">✓</div>
+      <h1>Email подтверждён!</h1>
+      <p>Ваш email успешно подтверждён.<br>Теперь вы можете войти в приложение.</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <span>Откройте приложение LumiSound</span>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <span>Нажмите «Войти»</span>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <span>Введите email и пароль, которые вы указали при регистрации</span>
+        </div>
+      </div>
+      <a href="lumisound://auth.callback" class="button">Открыть приложение</a>
+    </div>
+
+    <!-- Ошибка -->
+    <div id="errorBlock">
+      <div class="icon icon-error">✗</div>
+      <h1 class="error-title">Ссылка недействительна</h1>
+      <p>Ссылка для подтверждения устарела или уже была использована.<br>Попробуйте зарегистрироваться снова.</p>
+      <a href="lumisound://auth.callback" class="button" style="margin-top:24px;display:inline-block">Открыть приложение</a>
+    </div>
+
     <div class="footer">LumiSound &copy; 2026</div>
   </div>
+
+  <script>
+    var SUPABASE_URL = 'https://dmwnegtvotnrajzpyfad.supabase.co';
+    var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRtd25lZ3R2b3RucmFqenB5ZmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MDc5MzMsImV4cCI6MjA3ODA4MzkzM30.urUPVr7kS1JPeFU7IXHrSciwE_7vUm4B-2EiSKcu3P8';
+
+    var urlParams = new URLSearchParams(window.location.search);
+    var tokenHash = urlParams.get('token_hash') || '';
+    var type = urlParams.get('type') || 'email';
+
+    function show(id) {
+      document.getElementById('loadingBlock').style.display = 'none';
+      document.getElementById('successBlock').style.display = 'none';
+      document.getElementById('errorBlock').style.display = 'none';
+      document.getElementById(id).style.display = 'block';
+    }
+
+    if (!tokenHash) {
+      // Нет токена — просто показываем успех (пользователь уже подтверждён)
+      show('successBlock');
+    } else {
+      show('loadingBlock');
+      fetch(SUPABASE_URL + '/auth/v1/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY
+        },
+        body: JSON.stringify({ token_hash: tokenHash, type: type })
+      })
+      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
+      .then(function(r) {
+        if (r.ok || (r.d && r.d.access_token)) {
+          show('successBlock');
+        } else {
+          // Если ошибка "already confirmed" — тоже показываем успех
+          var msg = (r.d && (r.d.error_description || r.d.message || r.d.error)) || '';
+          if (msg.toLowerCase().indexOf('already') !== -1 || msg.toLowerCase().indexOf('confirmed') !== -1) {
+            show('successBlock');
+          } else {
+            show('errorBlock');
+          }
+        }
+      })
+      .catch(function() {
+        show('errorBlock');
+      });
+    }
+  </script>
 </body>
 </html>
