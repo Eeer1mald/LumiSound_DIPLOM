@@ -77,6 +77,10 @@ class AuthRepositoryImpl @Inject constructor(
         return supabase.changePassword(accessToken, newPassword)
     }
 
+    override suspend fun resetPassword(email: String): Result<Unit> {
+        return supabase.resetPassword(email)
+    }
+
     override suspend fun updateProfileVisibility(accessToken: String, isPublic: Boolean): Result<Unit> {
         return supabase.updateProfileVisibility(accessToken, isPublic).also {
             if (it.isSuccess) cachedProfile = null // инвалидируем кэш
@@ -89,7 +93,7 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun signUp(email: String, password: String): Result<Unit> {
         return runCatching {
-            supabase.signUp(email, password, redirectUrl = "lumisound://auth.callback")
+            supabase.signUp(email, password, redirectUrl = "https://eeer1mald.github.io/LumiSound_DIPLOM/email-confirmed.html")
             Unit
         }
     }
@@ -97,7 +101,7 @@ class AuthRepositoryImpl @Inject constructor(
     override suspend fun signUpLoginCreateProfile(username: String, email: String, password: String): Result<SupabaseTokenResponse> {
         return runCatching {
             // 1) Sign up (may require email confirmation depending on project settings)
-            supabase.signUp(email, password, redirectUrl = "lumisound://auth.callback")
+            supabase.signUp(email, password, redirectUrl = "https://eeer1mald.github.io/LumiSound_DIPLOM/email-confirmed.html")
             savePendingUsername(email, username)
             // Try to login immediately after signup to get token
             val tokenResponse = supabase.signIn(email, password)

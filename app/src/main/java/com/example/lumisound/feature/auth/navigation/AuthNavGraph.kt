@@ -12,6 +12,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.lumisound.data.local.SessionManager
+import com.example.lumisound.feature.auth.forgotpassword.ForgotPasswordScreen
 import com.example.lumisound.feature.auth.login.LoginScreen
 import com.example.lumisound.feature.auth.navigation.AuthDestination
 import com.example.lumisound.feature.auth.profilesetup.ProfileSetupScreen
@@ -50,6 +51,7 @@ fun AuthNavGraph(
         addRegisterDestination(navController)
         addVerifyEmailDestination(navController)
         addProfileSetupDestination(navController)
+        addForgotPasswordDestination(navController)
         addHomeDestination(navController, synthesisInviteCode)
     }
 }
@@ -104,7 +106,11 @@ private fun NavGraphBuilder.addLoginDestination(navController: NavHostController
                 }
             },
             // TODO: Реализовать экран восстановления пароля
-            onNavigateToForgot = { /* TODO: Forgot password flow - создать ForgotPasswordScreen */ }
+            onNavigateToForgot = {
+                navController.navigate(AuthDestination.ForgotPassword.route) {
+                    launchSingleTop = true
+                }
+            }
         )
     }
 }
@@ -195,6 +201,18 @@ private fun NavGraphBuilder.addProfileSetupDestination(navController: NavHostCon
                     launchSingleTop = true
                 }
             }
+        )
+    }
+}
+
+private fun NavGraphBuilder.addForgotPasswordDestination(navController: NavHostController) {
+    composable(
+        route = AuthDestination.ForgotPassword.route,
+        enterTransition = { fadeIn(animationSpec = tween(150)) },
+        exitTransition = { fadeOut(animationSpec = tween(150)) }
+    ) {
+        ForgotPasswordScreen(
+            onNavigateBack = { navController.popBackStack() }
         )
     }
 }

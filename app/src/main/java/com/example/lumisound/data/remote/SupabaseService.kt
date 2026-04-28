@@ -228,6 +228,30 @@ class SupabaseService @Inject constructor(
         }
     }
 
+    /** Отправить письмо для сброса пароля */
+    suspend fun resetPassword(email: String): Result<Unit> {
+        return runCatching {
+            val redirectUrl = "https://eeer1mald.github.io/LumiSound_DIPLOM/reset-password.html"
+            val response = http.post {
+                url("$baseUrl/auth/v1/recover")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                contentType(ContentType.Application.Json)
+                setBody("""{"email":"$email","gotrue_meta_security":{},"redirect_to":"$redirectUrl"}""")
+            }
+            if (!response.status.isSuccess()) {
+                val text = response.bodyAsText()
+                Log.e("SupabaseService", "resetPassword error: ${response.status} $text")
+                val message = when (response.status.value) {
+                    429 -> "Подождите минуту перед повторным запросом."
+                    422 -> "Неверный формат email."
+                    else -> "Не удалось отправить письмо. Попробуйте позже."
+                }
+                throw IllegalStateException(message)
+            }
+        }
+    }
+
     /** Обновить поле is_public в профиле */
     suspend fun updateProfileVisibility(accessToken: String, isPublic: Boolean): Result<Unit> {
         return runCatching {

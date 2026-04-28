@@ -9,4 +9,5 @@ sealed class AuthDestination(val route: String) {
     data object Register : AuthDestination("register")
     data object VerifyEmail : AuthDestination("verify_email")
     data object ProfileSetup : AuthDestination("profile_setup")
+    data object ForgotPassword : AuthDestination("forgot_password")
 }

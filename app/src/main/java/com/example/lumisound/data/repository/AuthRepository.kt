@@ -11,6 +11,7 @@ interface AuthRepository {
     suspend fun updateProfileVisibility(accessToken: String, isPublic: Boolean): Result<Unit>
     suspend fun googleSignIn(idToken: String): Result<Unit>
     suspend fun signUp(email: String, password: String): Result<Unit>
+    suspend fun resetPassword(email: String): Result<Unit>
     suspend fun signUpLoginCreateProfile(username: String, email: String, password: String): Result<SupabaseTokenResponse>
     suspend fun savePendingUsername(email: String, username: String)
     fun getPendingUsername(email: String): String?
