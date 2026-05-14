@@ -1325,15 +1325,14 @@ class SupabaseService @Inject constructor(
                 @Serializable data class VoteRow(val vote: Int)
                 val votes = json.decodeFromString<List<VoteRow>>(countResponse.bodyAsText())
                 val reputation = votes.sumOf { it.vote }
-                // Используем PATCH для обновления только поля reputation
-                http.patch {
-                    url("$baseUrl/rest/v1/track_ratings")
+                // Используем RPC функцию с SECURITY DEFINER — обходит RLS ограничение
+                // (обычный PATCH не работает т.к. пользователь не может обновлять чужие рецензии)
+                http.post {
+                    url("$baseUrl/rest/v1/rpc/update_review_reputation")
                     header("apikey", anonKey)
                     header(HttpHeaders.Authorization, "Bearer $accessToken")
-                    header("Prefer", "return=minimal")
-                    parameter("id", "eq.$ratingId")
                     contentType(ContentType.Application.Json)
-                    setBody("""{"reputation":$reputation}""")
+                    setBody("""{"p_rating_id":"$ratingId"}""")
                 }
             }
         }
