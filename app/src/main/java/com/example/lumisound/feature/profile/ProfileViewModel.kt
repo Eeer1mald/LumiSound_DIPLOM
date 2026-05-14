@@ -1,5 +1,6 @@
 package com.example.lumisound.feature.profile
 
+import com.example.lumisound.data.cache.AppDataCache
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -24,7 +25,6 @@ data class ProfileUiState(
     val username: String = "",
     val bio: String? = null,
     val avatarUrl: String? = null,
-    val favoriteGenre: String? = null,
     val favoriteTracks: List<FavoriteTrack> = emptyList(),
     val favoriteArtists: List<FavoriteArtist> = emptyList(),
     val commentsCount: Int = 0,
@@ -56,7 +56,8 @@ data class FavoriteArtist(
 class ProfileViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val authRepository: AuthRepository,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val cache: AppDataCache
 ) : ViewModel() {
     
     private val _uiState = MutableStateFlow(ProfileUiState())
@@ -65,14 +66,47 @@ class ProfileViewModel @Inject constructor(
     private val _avatarUri = MutableStateFlow<Uri?>(null)
     val avatarUri = _avatarUri.asStateFlow()
     
-    // Флаги больше не нужны — кэш теперь в AuthRepositoryImpl
     init {
+        // Мгновенно показываем кэш если готов
+        applyCache()
         loadProfile()
         loadFavoriteTracks()
         loadFavoriteArtists()
         loadCounters()
     }
-    
+
+    private fun applyCache() {
+        if (!cache.isReady.value) return
+        val profile = cache.profile.value
+        val favTracks = cache.favoriteTracks.value
+        val favArtists = cache.favoriteArtists.value
+        val ratings = cache.myRatings.value
+        val comments = cache.myComments.value
+        if (profile != null) {
+            _uiState.value = _uiState.value.copy(
+                username = profile.username,
+                bio = profile.bio,
+                avatarUrl = profile.avatarUrl,
+                favoriteTracks = favTracks.map { t ->
+                    FavoriteTrack(id = t.id, trackId = t.trackId, title = t.trackTitle,
+                        artist = t.trackArtist, coverUrl = t.trackCoverUrl,
+                        previewUrl = t.trackPreviewUrl, addedAt = t.addedAt)
+                },
+                favoriteArtists = favArtists.map { a ->
+                    FavoriteArtist(id = a.id, artistId = a.artistId, name = a.artistName,
+                        imageUrl = a.artistImageUrl, playCount = a.playCount)
+                },
+                commentsCount = comments.size,
+                reviewsCount = ratings.count { !it.review.isNullOrBlank() },
+                ratingsCount = ratings.size,
+                isLoading = false
+            )
+            profile.avatarUrl?.let { url ->
+                try { _avatarUri.value = Uri.parse(url) } catch (e: Exception) { _avatarUri.value = null }
+            }
+        }
+    }
+
     fun loadProfile() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
@@ -88,7 +122,6 @@ class ProfileViewModel @Inject constructor(
                                 username = profile.username,
                                 bio = profile.bio,
                                 avatarUrl = profile.avatarUrl,
-                                favoriteGenre = profile.favoriteGenre,
                                 isLoading = false
                             )
                             profile.avatarUrl?.let { url ->
@@ -125,7 +158,6 @@ class ProfileViewModel @Inject constructor(
                                                 username = profile.username,
                                                 bio = profile.bio,
                                                 avatarUrl = profile.avatarUrl,
-                                                favoriteGenre = profile.favoriteGenre,
                                                 isLoading = false
                                             )
                                             profile.avatarUrl?.let { url ->
@@ -240,7 +272,6 @@ class ProfileViewModel @Inject constructor(
                     username = newUsername,
                     email = email,
                     bio = currentState.bio,
-                    favoriteGenre = currentState.favoriteGenre,
                     avatarUrl = currentState.avatarUrl
                 ).onSuccess {
                     _uiState.value = currentState.copy(username = newUsername)
@@ -261,7 +292,6 @@ class ProfileViewModel @Inject constructor(
                     username = currentState.username,
                     email = email,
                     bio = newBio,
-                    favoriteGenre = currentState.favoriteGenre,
                     avatarUrl = currentState.avatarUrl
                 ).onSuccess {
                     _uiState.value = currentState.copy(bio = newBio)
@@ -333,7 +363,6 @@ class ProfileViewModel @Inject constructor(
                                 username = currentState.username,
                                 email = email,
                                 bio = currentState.bio,
-                                favoriteGenre = currentState.favoriteGenre,
                                 avatarUrl = uploadedUrl
                             ).onSuccess {
                                 android.util.Log.d("ProfileViewModel", "Профиль обновлен с новым URL аватара в БД")

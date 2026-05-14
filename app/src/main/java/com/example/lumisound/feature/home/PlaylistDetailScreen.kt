@@ -99,7 +99,7 @@ fun PlaylistDetailScreen(
     Box(modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background).statusBarsPadding()) {
         val listState = rememberLazyListState()
 
-        LazyColumn(modifier = Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 80.dp)) {
+        LazyColumn(modifier = Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 160.dp)) {
 
             // Header
             item(key = "header") {

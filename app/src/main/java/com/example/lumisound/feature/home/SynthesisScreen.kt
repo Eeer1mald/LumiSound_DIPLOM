@@ -215,32 +215,6 @@ fun SynthesisCreateScreen(
                             }
                         }
 
-                        // Участники своей сессии
-                        if (state.participants.isNotEmpty()) {
-                            item {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        "Участники (${state.participants.size})",
-                                        color = LocalAppColors.current.secondary, fontSize = 12.sp, fontWeight = FontWeight.Medium
-                                    )
-                                    Box(
-                                        modifier = Modifier.size(28.dp).background(Color.White.copy(alpha = 0.06f), CircleShape)
-                                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.refreshParticipants() },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Default.Refresh, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            }
-                            items(state.participants, key = { it.id }) { participant ->
-                                ParticipantRow(participant = participant)
-                            }
-                        }
-
                         // Отступ для мини-плеера
                         item { Spacer(modifier = Modifier.height(80.dp)) }
                     }

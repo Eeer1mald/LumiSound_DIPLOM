@@ -229,8 +229,8 @@ class LoginViewModel @Inject constructor(
     }
 
     private fun validatePassword(password: String): String? {
-        if (password.isEmpty()) return null
-        return if (password.length < 8) "Минимум 8 символов" else null
+        // На экране входа пароль не валидируем — только проверяем что не пустой
+        return null
     }
 }
 

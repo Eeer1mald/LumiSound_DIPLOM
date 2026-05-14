@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -39,7 +40,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.lumisound.BuildConfig
 import com.example.lumisound.ui.theme.*
 import com.example.lumisound.ui.theme.LocalAppColors
 import kotlin.math.roundToInt
@@ -53,30 +53,25 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsState()
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showPasswordSection by remember { mutableStateOf(false) }
-    var showNewPassword by remember { mutableStateOf(false) }
-    var showConfirmPassword by remember { mutableStateOf(false) }
+    var showPasswordResetDialog by remember { mutableStateOf(false) }
     var showEqualizer by remember { mutableStateOf(false) }
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     var sleepTimerRemainingText by remember { mutableStateOf("") }
-
-    // Обновляем оставшееся время каждую секунду когда диалог открыт
-    LaunchedEffect(showSleepTimerDialog) {
-        if (showSleepTimerDialog) {
-            while (showSleepTimerDialog) {
-                val remainingMs = viewModel.getSleepTimerRemainingMs()
-                if (remainingMs <= 0L) { showSleepTimerDialog = false; break }
-                val totalSec = remainingMs / 1000
-                val min = totalSec / 60
-                val sec = totalSec % 60
-                sleepTimerRemainingText = "${min}:${sec.toString().padStart(2, '0')}"
-                kotlinx.coroutines.delay(1000L)
-            }
-        }
-    }
+    var showAppealDialog by remember { mutableStateOf(false) }
+    var appealText by remember { mutableStateOf("") }
+    var appealSent by remember { mutableStateOf(false) }
+    var showAboutScreen by remember { mutableStateOf(false) }
 
     // Открываем экран эквалайзера
     if (showEqualizer) {
         EqualizerScreen(onBack = { showEqualizer = false }, viewModel = viewModel)
+        return
+    }
+
+    // Открываем экран "О приложении"
+    if (showAboutScreen) {
+        BackHandler { showAboutScreen = false }
+        AboutScreen(onBack = { showAboutScreen = false })
         return
     }
 
@@ -117,106 +112,132 @@ fun SettingsScreen(
         ) {
 
             // ══════════════════════════════════════════════════════
+            // БАН — показываем если пользователь забанен
+            // ══════════════════════════════════════════════════════
+            if (state.isBanned) {
+                androidx.compose.foundation.layout.Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .background(Color(0xFFFF4D6D).copy(alpha = 0.12f), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                        .border(1.dp, Color(0xFFFF4D6D).copy(alpha = 0.4f), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Block, null, tint = Color(0xFFFF4D6D), modifier = Modifier.size(20.dp))
+                        Text("Ваш аккаунт заблокирован", color = Color(0xFFFF4D6D), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+                    if (!state.banReason.isNullOrBlank()) {
+                        Text("Причина: ${state.banReason}", color = Color(0xFFFF4D6D).copy(alpha = 0.8f), fontSize = 13.sp)
+                    }
+                    Text(
+                        "Если вы считаете это ошибкой, вы можете подать апелляцию.",
+                        color = LocalAppColors.current.secondary,
+                        fontSize = 12.sp
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                androidx.compose.ui.graphics.Brush.linearGradient(listOf(GradientStart, GradientEnd)),
+                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                            )
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                showAppealDialog = true
+                            }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Подать апелляцию", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            // Диалог апелляции
+            if (showAppealDialog) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showAppealDialog = false; appealSent = false },
+                    title = { Text(if (appealSent) "Апелляция отправлена" else "Подать апелляцию", color = LocalAppColors.current.onBackground) },
+                    text = {
+                        if (appealSent) {
+                            Text("Ваша апелляция принята. Мы рассмотрим её в ближайшее время.", color = LocalAppColors.current.secondary)
+                        } else {
+                            androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Опишите, почему вы считаете бан ошибочным:", color = LocalAppColors.current.secondary, fontSize = 13.sp)
+                                androidx.compose.material3.OutlinedTextField(
+                                    value = appealText,
+                                    onValueChange = { appealText = it },
+                                    placeholder = { Text("Ваше сообщение...", color = LocalAppColors.current.secondary) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 3,
+                                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = GradientStart,
+                                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                                        focusedTextColor = LocalAppColors.current.onBackground,
+                                        unfocusedTextColor = LocalAppColors.current.onBackground,
+                                        cursorColor = GradientStart
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        if (appealSent) {
+                            androidx.compose.material3.TextButton(onClick = { showAppealDialog = false; appealSent = false }) {
+                                Text("Закрыть", color = GradientStart)
+                            }
+                        } else {
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    if (appealText.isNotBlank()) {
+                                        viewModel.submitAppeal(appealText)
+                                        appealSent = true
+                                    }
+                                },
+                                enabled = appealText.isNotBlank()
+                            ) {
+                                Text("Отправить", color = GradientStart)
+                            }
+                        }
+                    },
+                    dismissButton = {
+                        if (!appealSent) {
+                            androidx.compose.material3.TextButton(onClick = { showAppealDialog = false }) {
+                                Text("Отмена", color = LocalAppColors.current.secondary)
+                            }
+                        }
+                    },
+                    containerColor = LocalAppColors.current.surface
+                )
+            }
+
+            // ══════════════════════════════════════════════════════
             // АККАУНТ
             // ══════════════════════════════════════════════════════
-            SettingsSection(title = "Аккаунт") {
-                // Email — только отображение
+            SettingsSection(title = "Аккаунт") {                // Email — только отображение
                 SettingsInfoCard(
                     icon = Icons.Default.Email,
                     title = "Email",
                     value = state.userEmail.ifBlank { "—" }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                // Смена пароля
-                Column(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(LocalAppColors.current.surface)
-                        .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                showPasswordSection = !showPasswordSection
-                            }
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier.size(40.dp).background(GradientStart.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Lock, null, tint = GradientStart, modifier = Modifier.size(20.dp))
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Сменить пароль", color = LocalAppColors.current.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text("Изменить пароль от аккаунта", color = LocalAppColors.current.secondary, fontSize = 12.sp)
-                        }
-                        Icon(
-                            if (showPasswordSection) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    if (showPasswordSection) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-                            OutlinedTextField(
-                                value = state.newPassword,
-                                onValueChange = { viewModel.setNewPassword(it) },
-                                label = { Text("Новый пароль", color = LocalAppColors.current.secondary, fontSize = 13.sp) },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                visualTransformation = if (showNewPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                                trailingIcon = {
-                                    IconButton(onClick = { showNewPassword = !showNewPassword }) {
-                                        Icon(if (showNewPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(18.dp))
-                                    }
-                                },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = GradientStart, unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
-                                    focusedTextColor = LocalAppColors.current.onBackground, unfocusedTextColor = LocalAppColors.current.onBackground, cursorColor = GradientStart
-                                )
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = state.confirmPassword,
-                                onValueChange = { viewModel.setConfirmPassword(it) },
-                                label = { Text("Подтвердите пароль", color = LocalAppColors.current.secondary, fontSize = 13.sp) },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                visualTransformation = if (showConfirmPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                                trailingIcon = {
-                                    IconButton(onClick = { showConfirmPassword = !showConfirmPassword }) {
-                                        Icon(if (showConfirmPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(18.dp))
-                                    }
-                                },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                isError = state.passwordError != null,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = GradientStart, unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
-                                    focusedTextColor = LocalAppColors.current.onBackground, unfocusedTextColor = LocalAppColors.current.onBackground, cursorColor = GradientStart,
-                                    errorBorderColor = Color(0xFFFF5C6C)
-                                )
-                            )
-                            if (state.passwordError != null) {
-                                Text(state.passwordError!!, color = Color(0xFFFF5C6C), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
-                            }
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Box(
-                                modifier = Modifier.fillMaxWidth()
-                                    .background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(10.dp))
-                                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = !state.isChangingPassword) { viewModel.changePassword() }
-                                    .padding(vertical = 12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (state.isChangingPassword) {
-                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                                } else {
-                                    Text("Сохранить пароль", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
-                    }
+                // Смена пароля через email
+                SettingsActionCard(
+                    icon = Icons.Default.Lock,
+                    title = "Сменить пароль",
+                    subtitle = "Ссылка для смены будет отправлена на email",
+                    isLoading = state.isChangingPassword,
+                    onClick = { showPasswordResetDialog = true }
+                )
+                if (state.passwordError != null) {
+                    Text(
+                        state.passwordError!!,
+                        color = Color(0xFFFF5C6C),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                    )
                 }
             }
 
@@ -281,6 +302,12 @@ fun SettingsScreen(
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(8.dp))
+                // Иконка приложения
+                AppIconSection(
+                    selectedIcon = state.appIcon,
+                    onIconSelected = { viewModel.setAppIcon(it) }
+                )
             }
 
             // ══════════════════════════════════════════════════════
@@ -343,6 +370,7 @@ fun SettingsScreen(
                     onMinutesChange = { viewModel.setSleepTimerMinutes(it) },
                     onStart = { viewModel.startSleepTimer() },
                     onCancel = { viewModel.cancelSleepTimer() },
+                    getRemainingMs = { viewModel.getSleepTimerRemainingMs() },
                     onTimerClick = {
                         val remaining = viewModel.getSleepTimerRemainingMs()
                         if (remaining > 0L) {
@@ -374,8 +402,8 @@ fun SettingsScreen(
             // ══════════════════════════════════════════════════════
             SettingsSection(title = "Конфиденциальность") {
                 SettingsToggleCard(
-                    icon = Icons.Default.Public,
-                    title = "Публичный профиль",
+                    icon = if (state.isProfilePublic) Icons.Default.Public else Icons.Default.Lock,
+                    title = if (state.isProfilePublic) "Публичный профиль" else "Закрытый профиль",
                     subtitle = "Разрешить другим видеть ваш профиль",
                     checked = state.isProfilePublic,
                     onCheckedChange = { viewModel.setProfilePublic(it) },
@@ -400,10 +428,11 @@ fun SettingsScreen(
             // О ПРИЛОЖЕНИИ
             // ══════════════════════════════════════════════════════
             SettingsSection(title = "О приложении") {
-                SettingsInfoCard(
+                SettingsActionCard(
                     icon = Icons.Default.Info,
-                    title = "Версия",
-                    value = BuildConfig.VERSION_NAME
+                    title = "О приложении",
+                    subtitle = "Версия, политики, авторские права",
+                    onClick = { showAboutScreen = true }
                 )
             }
 
@@ -440,8 +469,78 @@ fun SettingsScreen(
             }
 
             Spacer(modifier = Modifier.height(40.dp))
+            // Дополнительный отступ для мини-плеера
+            Spacer(modifier = Modifier.height(80.dp))
         } // закрываем внутренний Column (скролл)
     } // закрываем Box
+
+    // Диалог подтверждения смены пароля
+    if (showPasswordResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasswordResetDialog = false },
+            title = { Text("Сменить пароль?", color = LocalAppColors.current.onBackground) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Ссылка для смены пароля будет отправлена на:",
+                        color = LocalAppColors.current.secondary,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        state.userEmail.ifBlank { "ваш email" },
+                        color = GradientStart,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Перейдите по ссылке в письме и введите новый пароль.",
+                        color = LocalAppColors.current.secondary,
+                        fontSize = 13.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPasswordResetDialog = false
+                        viewModel.sendPasswordResetEmail()
+                    }
+                ) {
+                    Text("Отправить письмо", color = GradientStart, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordResetDialog = false }) {
+                    Text("Отмена", color = LocalAppColors.current.secondary)
+                }
+            },
+            containerColor = LocalAppColors.current.surface,
+            titleContentColor = LocalAppColors.current.onBackground,
+            textContentColor = LocalAppColors.current.secondary
+        )
+    }
+
+    // Диалог успеха — письмо отправлено
+    if (state.successMessage != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearMessages() },
+            title = { Text("Письмо отправлено", color = LocalAppColors.current.onBackground) },
+            text = {
+                Text(
+                    state.successMessage!!,
+                    color = LocalAppColors.current.secondary,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearMessages() }) {
+                    Text("OK", color = GradientStart, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            containerColor = LocalAppColors.current.surface,
+            titleContentColor = LocalAppColors.current.onBackground
+        )
+    }
 
     if (showLogoutDialog) {
         AlertDialog(
@@ -461,13 +560,26 @@ fun SettingsScreen(
     }
 
     if (showSleepTimerDialog) {
+        // Живой отсчёт в диалоге
+        var dialogRemainingText by remember { mutableStateOf(sleepTimerRemainingText) }
+        LaunchedEffect(showSleepTimerDialog) {
+            while (showSleepTimerDialog) {
+                val ms = viewModel.getSleepTimerRemainingMs()
+                if (ms <= 0L) { showSleepTimerDialog = false; break }
+                val totalSec = ms / 1000
+                val min = totalSec / 60
+                val sec = totalSec % 60
+                dialogRemainingText = "${min}:${sec.toString().padStart(2, '0')}"
+                kotlinx.coroutines.delay(1000L)
+            }
+        }
         AlertDialog(
             onDismissRequest = { showSleepTimerDialog = false },
             title = { Text("Таймер сна", color = LocalAppColors.current.onBackground) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Музыка выключится через $sleepTimerRemainingText",
+                        "Музыка выключится через $dialogRemainingText",
                         color = LocalAppColors.current.secondary,
                         fontSize = 14.sp
                     )
@@ -492,6 +604,88 @@ fun SettingsScreen(
 }
 
 // ── Компоненты ────────────────────────────────────────────────────────────────
+
+@Composable
+private fun AppIconSection(selectedIcon: String, onIconSelected: (String) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val icons = listOf(
+        "black" to "Чёрная",
+        "white" to "Белая",
+        "blue"  to "Синяя",
+        "pink"  to "Розовая"
+    )
+    Column(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .background(LocalAppColors.current.surface)
+            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            icons.forEach { (iconKey, label) ->
+                val isSelected = selectedIcon == iconKey
+                val resId = context.resources.getIdentifier(
+                    "icon_$iconKey", "drawable", context.packageName
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(
+                                2.dp,
+                                if (isSelected) GradientStart else Color.White.copy(alpha = 0.1f),
+                                RoundedCornerShape(16.dp)
+                            )
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onIconSelected(iconKey) }
+                    ) {
+                        if (resId != 0) {
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(id = resId),
+                                contentDescription = label,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            )
+                        }
+                        if (isSelected) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(4.dp)
+                                    .size(22.dp)
+                                    .background(GradientStart, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        label,
+                        color = if (isSelected) GradientStart else LocalAppColors.current.secondary,
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
+            }
+            // Пустые веса чтобы иконки занимали только левую часть
+        }
+    }
+}
 
 @Composable
 private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
@@ -838,7 +1032,8 @@ private fun SleepTimerCard(
     onMinutesChange: (Int) -> Unit,
     onStart: () -> Unit,
     onCancel: () -> Unit,
-    onTimerClick: (() -> Unit)? = null
+    onTimerClick: (() -> Unit)? = null,
+    getRemainingMs: (() -> Long)? = null   // колбэк для живого обратного отсчёта
 ) {
     val options = listOf(5, 10, 15, 20, 30, 45, 60, 90)
     val labels = listOf("5м", "10м", "15м", "20м", "30м", "45м", "60м", "90м")
@@ -854,9 +1049,24 @@ private fun SleepTimerCard(
         if (idx >= 0 && idx != currentIdx) currentIdx = idx
     }
 
+    // Живой обратный отсчёт — тикает каждую секунду пока таймер активен
+    var liveRemainingMs by remember { mutableStateOf(remainingMs) }
+    LaunchedEffect(isActive) {
+        if (isActive && getRemainingMs != null) {
+            while (true) {
+                val ms = getRemainingMs()
+                liveRemainingMs = ms
+                if (ms <= 0L) break
+                kotlinx.coroutines.delay(1000L)
+            }
+        } else {
+            liveRemainingMs = remainingMs
+        }
+    }
+
     // Форматируем оставшееся время
-    val remainingText = if (isActive && remainingMs > 0L) {
-        val totalSec = remainingMs / 1000
+    val remainingText = if (isActive && liveRemainingMs > 0L) {
+        val totalSec = liveRemainingMs / 1000
         val min = totalSec / 60
         val sec = totalSec % 60
         "${min}:${sec.toString().padStart(2, '0')}"
@@ -880,7 +1090,10 @@ private fun SleepTimerCard(
                             if (isActive) GradientStart.copy(alpha = 0.2f) else GradientStart.copy(alpha = 0.15f),
                             RoundedCornerShape(10.dp)
                         )
-                        .then(if (isActive && onTimerClick != null) Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTimerClick() } else Modifier),
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { if (isActive) onTimerClick?.invoke() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(Icons.Default.Bedtime, null, tint = GradientStart, modifier = Modifier.size(20.dp))

@@ -6,6 +6,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,6 +57,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -355,6 +359,16 @@ fun ReviewScreen(
                                             .createRoute(comment.userId, comment.username ?: "Пользователь", comment.userAvatarUrl)
                                     )
                                 }
+                            },
+                            onReport = { reason ->
+                                viewModel.submitReport(
+                                    targetType = "comment",
+                                    targetId = comment.id,
+                                    reason = reason,
+                                    targetContent = comment.comment,
+                                    targetUserId = comment.userId,
+                                    targetUsername = comment.username
+                                )
                             }
                         )
                         Box(modifier = Modifier.fillMaxWidth().height(1.dp).padding(start = 52.dp).background(Color.White.copy(alpha = 0.04f)))
@@ -363,37 +377,8 @@ fun ReviewScreen(
             }
         }
 
-        // Затемнение — рендерится ДО sheet, чтобы sheet был поверх
-        androidx.compose.animation.AnimatedVisibility(
-            visible = showRatingSheet || showStatsSheet,
-            enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)),
-            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                        showRatingSheet = false
-                        showStatsSheet = false
-                    }
-            )
-        }
-
         // ── Bottom sheet с оценками (редактирование) ──────────────────
-        AnimatedVisibility(
-            visible = showRatingSheet,
-            enter = slideInVertically(
-                animationSpec = androidx.compose.animation.core.spring(
-                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
-                    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
-                )
-            ) { it },
-            exit = slideOutVertically(
-                animationSpec = androidx.compose.animation.core.tween(200)
-            ) { it },
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-        ) {
+        if (showRatingSheet) {
             RatingBottomSheet(
                 state = state, track = track, viewModel = viewModel,
                 onDismiss = { showRatingSheet = false }
@@ -401,25 +386,11 @@ fun ReviewScreen(
         }
 
         // ── Bottom sheet со статистикой (просмотр) ─────────────────────
-        AnimatedVisibility(
-            visible = showStatsSheet,
-            enter = slideInVertically(
-                animationSpec = androidx.compose.animation.core.spring(
-                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
-                    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
-                )
-            ) { it },
-            exit = slideOutVertically(
-                animationSpec = androidx.compose.animation.core.tween(200)
-            ) { it },
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-        ) {
+        if (showStatsSheet) {
             StatsBottomSheet(
                 state = state,
-                onEditClick = {
-                    showStatsSheet = false
-                    showRatingSheet = true
-                }
+                onDismiss = { showStatsSheet = false },
+                onEditClick = { showStatsSheet = false; showRatingSheet = true }
             )
         }
     }
@@ -432,14 +403,35 @@ private fun RatingBottomSheet(
     viewModel: ReviewViewModel,
     onDismiss: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
-    ) {
+    var dragOffset by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() }
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .graphicsLayer { translationY = dragOffset.coerceAtLeast(0f) }
+                .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { if (dragOffset > 120f) onDismiss() else dragOffset = 0f },
+                        onDragCancel = { dragOffset = 0f },
+                        onVerticalDrag = { change, delta ->
+                            if (delta > 0 || dragOffset > 0f) {
+                                dragOffset = (dragOffset + delta).coerceAtLeast(0f)
+                                change.consume()
+                            }
+                        }
+                    )
+                }
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+        ) {
         Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -502,7 +494,9 @@ private fun RatingBottomSheet(
             Spacer(modifier = Modifier.height(8.dp))
             Text("Оценка сохранена", color = GradientStart, fontSize = 13.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
         }
-    }
+        Spacer(modifier = Modifier.height(8.dp))
+        } // Column
+    } // Box
 }
 
 @Composable
@@ -550,20 +544,41 @@ private fun SheetCriterionRow(label: String, score: Int?, onScoreChange: (Int) -
     }
 }
 
-// ── Sheet просмотра статистики ──────────────────────────────────────────────
 @Composable
 private fun StatsBottomSheet(
     state: ReviewUiState,
+    onDismiss: () -> Unit = {},
     onEditClick: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
-    ) {
+    var dragOffset by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() }
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .graphicsLayer { translationY = dragOffset.coerceAtLeast(0f) }
+                .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { if (dragOffset > 120f) onDismiss() else dragOffset = 0f },
+                        onDragCancel = { dragOffset = 0f },
+                        onVerticalDrag = { change, delta ->
+                            if (delta > 0 || dragOffset > 0f) {
+                                dragOffset = (dragOffset + delta).coerceAtLeast(0f)
+                                change.consume()
+                            }
+                        }
+                    )
+                }
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+        ) {
         Box(
             modifier = Modifier.width(36.dp).height(4.dp)
                 .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp))
@@ -576,40 +591,26 @@ private fun StatsBottomSheet(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Моя оценка", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Кнопка редактировать
+            Text("Средняя оценка", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            // Общая средняя оценка
+            val displayScore = state.averageRating?.avgOverall ?: state.existingRating?.overallScore
+            if (displayScore != null) {
                 Box(
                     modifier = Modifier
-                        .background(LocalAppColors.current.surface, RoundedCornerShape(8.dp))
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onEditClick() }
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .size(48.dp)
+                        .background(
+                            brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Default.Edit, null, tint = GradientStart, modifier = Modifier.size(14.dp))
-                        Text("Изменить", color = GradientStart, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                // Общая средняя оценка
-                val displayScore = state.averageRating?.avgOverall ?: state.existingRating?.overallScore
-                if (displayScore != null) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .background(
-                                brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)),
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            String.format("%.1f", displayScore),
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = (-0.5).sp
-                        )
-                    }
+                    Text(
+                        String.format("%.1f", displayScore),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = (-0.5).sp
+                    )
                 }
             }
         }
@@ -668,7 +669,32 @@ private fun StatsBottomSheet(
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-    }
+        // Кнопка изменить оценку
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(LocalAppColors.current.surface, RoundedCornerShape(12.dp))
+                .border(1.dp, GradientStart.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onEditClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                modifier = Modifier.padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(Icons.Default.Edit, null, tint = GradientStart, modifier = Modifier.size(16.dp))
+                Text(
+                    if (state.existingRating != null) "Изменить оценку" else "Поставить оценку",
+                    color = GradientStart,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        } // Column
+    } // Box
 }
 
 @Composable
@@ -712,7 +738,8 @@ private fun CommentRow(
     avatarUrl: String?,
     currentUserId: String?,
     onDelete: () -> Unit,
-    onAvatarClick: () -> Unit = {}
+    onAvatarClick: () -> Unit = {},
+    onReport: ((reason: String) -> Unit)? = null
 ) {
     val dateStr = remember(comment.createdAt) {
         try {
@@ -723,6 +750,7 @@ private fun CommentRow(
     }
 
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showReportDialog by remember { mutableStateOf(false) }
     val isOwner = currentUserId != null && comment.userId == currentUserId
 
     // Имя всегда из comment — оно сохраняется при отправке
@@ -730,36 +758,27 @@ private fun CommentRow(
     // Аватар всегда из comment — он сохраняется при отправке
     val displayAvatar = comment.userAvatarUrl?.takeIf { it.isNotBlank() } ?: avatarUrl
 
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Удалить комментарий?") },
-            text = { Text("Вы точно хотите удалить этот комментарий? Это действие нельзя отменить.") },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    showDeleteDialog = false
-                    onDelete()
-                }) {
-                    Text("Удалить", color = Color(0xFFFF5C6C))
-                }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Отмена")
-                }
-            },
-            containerColor = LocalAppColors.current.surface,
-            titleContentColor = LocalAppColors.current.onBackground,
-            textContentColor = LocalAppColors.current.secondary
+    if (showReportDialog && !isOwner) {
+        ReportDialog(
+            onDismiss = { showReportDialog = false },
+            onReport = { reason -> onReport?.invoke(reason) }
         )
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp)
+            .then(
+                if (!isOwner && onReport != null)
+                    Modifier.pointerInput(Unit) {
+                        detectTapGestures(onLongPress = { showReportDialog = true })
+                    }
+                else Modifier
+            ),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
+    ) {        Box(
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
@@ -782,8 +801,14 @@ private fun CommentRow(
             }
         }
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(displayName, color = LocalAppColors.current.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = if (!isOwner && comment.userId.isNotBlank())
+                    Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onAvatarClick() }
+                else Modifier
+            ) {
+                Text(displayName, color = if (isOwner) GradientStart else LocalAppColors.current.secondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 Text("• $dateStr", color = LocalAppColors.current.secondary, fontSize = 11.sp)
             }
             Spacer(modifier = Modifier.height(3.dp))

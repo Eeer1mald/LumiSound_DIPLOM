@@ -3,6 +3,7 @@ package com.example.lumisound.feature.settings
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.lumisound.data.cache.DiskCache
 import com.example.lumisound.data.local.SessionManager
 import com.example.lumisound.data.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -43,7 +44,12 @@ data class SettingsUiState(
     val passwordError: String? = null,
     // Кэш
     val isClearingCache: Boolean = false,
-    val cacheCleared: Boolean = false
+    val cacheCleared: Boolean = false,
+    // Иконка приложения
+    val appIcon: String = "black",
+    // Бан
+    val isBanned: Boolean = false,
+    val banReason: String? = null
 )
 
 @HiltViewModel
@@ -53,6 +59,8 @@ class SettingsViewModel @Inject constructor(
     private val playerStateHolder: com.example.lumisound.data.player.PlayerStateHolder,
     private val audioPlayerService: com.example.lumisound.data.player.AudioPlayerService,
     private val themeManager: com.example.lumisound.ui.theme.ThemeManager,
+    private val diskCache: DiskCache,
+    private val appDataCache: com.example.lumisound.data.cache.AppDataCache,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -88,7 +96,8 @@ class SettingsViewModel @Inject constructor(
             playbackSpeed = speed,
             sleepTimerActive = timerActive,
             sleepTimerMinutes = timerMinutes,
-            sleepTimerRemainingMs = timerRemainingMs
+            sleepTimerRemainingMs = timerRemainingMs,
+            appIcon = prefs.getString("app_icon", "black") ?: "black"
         )
         playerStateHolder.autoplayEnabled = autoplay
         playerStateHolder.showFloatingComments = sessionManager.getShowFloatingComments()
@@ -110,6 +119,11 @@ class SettingsViewModel @Inject constructor(
                 prefs.edit().putBoolean("profile_public", isPublic).apply()
                 _state.value = _state.value.copy(isProfilePublic = isPublic)
             }
+            // Проверяем бан
+            val ban = authRepository.getMyBan(realToken)
+            if (ban != null && ban.isActive) {
+                _state.value = _state.value.copy(isBanned = true, banReason = ban.reason)
+            }
         }
     }
 
@@ -117,6 +131,37 @@ class SettingsViewModel @Inject constructor(
         prefs.edit().putBoolean("autoplay", enabled).apply()
         playerStateHolder.autoplayEnabled = enabled
         _state.value = _state.value.copy(autoplayEnabled = enabled)
+    }
+
+    fun setAppIcon(icon: String) {
+        prefs.edit().putString("app_icon", icon).apply()
+        _state.value = _state.value.copy(appIcon = icon)
+
+        val pm = context.packageManager
+        val pkg = context.packageName
+
+        val allAliases = listOf(
+            "black" to "$pkg.MainActivityIconBlack",
+            "white" to "$pkg.MainActivityIconWhite",
+            "pink"  to "$pkg.MainActivityIconPink",
+            "blue"  to "$pkg.MainActivityIconBlue"
+        )
+
+        try {
+            allAliases.forEach { (key, alias) ->
+                val state = if (key == icon)
+                    android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                else
+                    android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                pm.setComponentEnabledSetting(
+                    android.content.ComponentName(pkg, alias),
+                    state,
+                    android.content.pm.PackageManager.DONT_KILL_APP
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "setAppIcon error: ${e.message}")
+        }
     }
 
     fun setShowFloatingComments(enabled: Boolean) {
@@ -292,12 +337,17 @@ class SettingsViewModel @Inject constructor(
         _state.value = _state.value.copy(isClearingCache = true)
         viewModelScope.launch {
             try {
-                val imageLoader = coil.ImageLoader(context)
+                // Используем синглтон ImageLoader — именно его кэш используется в приложении
+                val imageLoader = coil.Coil.imageLoader(context)
                 imageLoader.memoryCache?.clear()
                 imageLoader.diskCache?.clear()
             } catch (e: Exception) {
                 android.util.Log.w("SettingsVM", "Coil cache clear: ${e.message}")
             }
+            // Очищаем дисковый кэш данных (треки, плейлисты и т.д.)
+            diskCache.clearAll()
+            // Очищаем in-memory кэш AppDataCache
+            appDataCache.invalidate()
             _state.value = _state.value.copy(
                 isClearingCache = false,
                 cacheCleared = true
@@ -305,11 +355,53 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun sendPasswordResetEmail() {
+        val email = sessionManager.getEmail() ?: return
+        _state.value = _state.value.copy(isChangingPassword = true, passwordError = null)
+        viewModelScope.launch {
+            authRepository.resetPassword(email)
+                .onSuccess {
+                    _state.value = _state.value.copy(
+                        isChangingPassword = false,
+                        successMessage = "Письмо отправлено на $email"
+                    )
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(
+                        isChangingPassword = false,
+                        passwordError = e.message ?: "Не удалось отправить письмо"
+                    )
+                }
+        }
+    }
+
     fun logout() {
+        audioPlayerService.stop()
+        audioPlayerService.cancelSleepTimer()
+        audioPlayerService.dismissNotification()
+        playerStateHolder.setPlaylist(emptyList())
+        playerStateHolder.sleepTimerActive = false
         sessionManager.clear()
+        diskCache.clearAll()
     }
 
     fun clearMessages() {
         _state.value = _state.value.copy(successMessage = null, error = null, cacheCleared = false)
+    }
+
+    fun submitAppeal(message: String) {
+        val token = sessionManager.getAccessToken() ?: return
+        val userId = sessionManager.getUserId() ?: return
+        viewModelScope.launch {
+            val ban = authRepository.getMyBan(token) ?: return@launch
+            authRepository.submitBanAppeal(
+                token,
+                com.example.lumisound.data.remote.SupabaseService.BanAppealInsert(
+                    userId = userId,
+                    banId = ban.id,
+                    message = message
+                )
+            )
+        }
     }
 }

@@ -7,18 +7,21 @@ import androidx.media3.common.MediaItem
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import com.example.lumisound.data.remote.AudiusArtistFull
 import com.example.lumisound.data.model.Track
 import com.example.lumisound.data.remote.SupabaseService
 import com.example.lumisound.data.repository.AuthRepository
 import com.example.lumisound.data.repository.MusicRepository
 import com.example.lumisound.data.local.SessionManager
+import com.example.lumisound.data.cache.AppDataCache
+import com.example.lumisound.data.player.PlayerStateHolder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 @HiltViewModel
@@ -26,6 +29,8 @@ class SearchViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
     private val authRepository: AuthRepository,
     private val sessionManager: SessionManager,
+    private val playerStateHolder: PlayerStateHolder,
+    private val cache: AppDataCache,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -41,8 +46,8 @@ class SearchViewModel @Inject constructor(
     private val _searchResults = MutableStateFlow<List<Track>>(emptyList())
     val searchResults: StateFlow<List<Track>> = _searchResults.asStateFlow()
 
-    private val _artistResults = MutableStateFlow<List<AudiusArtistFull>>(emptyList())
-    val artistResults: StateFlow<List<AudiusArtistFull>> = _artistResults.asStateFlow()
+    private val _artistResults = MutableStateFlow<List<com.example.lumisound.data.remote.ArtistSearchResult>>(emptyList())
+    val artistResults: StateFlow<List<com.example.lumisound.data.remote.ArtistSearchResult>> = _artistResults.asStateFlow()
 
     private val _playlistResults = MutableStateFlow<List<SupabaseService.PlaylistResponse>>(emptyList())
     val playlistResults: StateFlow<List<SupabaseService.PlaylistResponse>> = _playlistResults.asStateFlow()
@@ -80,7 +85,26 @@ class SearchViewModel @Inject constructor(
     private var currentTrackUrl: String? = null
 
     init {
-        loadFeeds()
+        // Сразу применяем кэш если готов — фид отображается мгновенно
+        val cachedDiscover = cache.discoverFeed.value
+        val cachedFollowing = cache.followingFeed.value
+        if (cachedDiscover.isNotEmpty()) {
+            _discoverFeed.value = cachedDiscover
+            _followingFeed.value = cachedFollowing
+            preloadTracks(cachedDiscover.take(5))
+            // Если followingFeed пустой — загружаем в фоне, не блокируя UI
+            if (cachedFollowing.isEmpty()) {
+                viewModelScope.launch {
+                    val following = withTimeoutOrNull(12_000L) {
+                        musicRepository.getFollowingFeed(page = 0, pageSize = pageSize)
+                            .getOrDefault(emptyList())
+                    } ?: emptyList()
+                    _followingFeed.value = following
+                }
+            }
+        } else {
+            loadFeeds()
+        }
         feedPlayer.addListener(object : androidx.media3.common.Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _isFeedPlaying.value = isPlaying
@@ -96,13 +120,30 @@ class SearchViewModel @Inject constructor(
 
         viewModelScope.launch {
             _feedLoading.value = true
-            val discover = musicRepository.getDiscoverFeed(page = 0, pageSize = pageSize)
-            val following = musicRepository.getFollowingFeed(page = 0, pageSize = pageSize)
-            _discoverFeed.value = discover.getOrDefault(emptyList())
-            _followingFeed.value = following.getOrDefault(emptyList())
+
+            // Запускаем оба запроса параллельно с таймаутом 12 секунд
+            val discoverDeferred = async {
+                withTimeoutOrNull(12_000L) {
+                    musicRepository.getDiscoverFeed(page = 0, pageSize = pageSize)
+                        .getOrDefault(emptyList())
+                } ?: emptyList()
+            }
+            val followingDeferred = async {
+                withTimeoutOrNull(12_000L) {
+                    musicRepository.getFollowingFeed(page = 0, pageSize = pageSize)
+                        .getOrDefault(emptyList())
+                } ?: emptyList()
+            }
+
+            val discover = discoverDeferred.await()
+            val following = followingDeferred.await()
+
+            _discoverFeed.value = discover
+            _followingFeed.value = following
             _feedLoading.value = false
+
             // Предзагружаем первые 3 трека
-            preloadTracks(_discoverFeed.value.take(3))
+            if (discover.isNotEmpty()) preloadTracks(discover.take(3))
         }
     }
 
@@ -112,11 +153,13 @@ class SearchViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoadingMore.value = true
             discoverPage++
-            val more = musicRepository.getDiscoverFeed(page = discoverPage, pageSize = pageSize)
-            val newTracks = more.getOrDefault(emptyList())
-            if (newTracks.isNotEmpty()) {
-                _discoverFeed.value = _discoverFeed.value + newTracks
-                preloadTracks(newTracks.take(3))
+            val more = withTimeoutOrNull(12_000L) {
+                musicRepository.getDiscoverFeed(page = discoverPage, pageSize = pageSize)
+                    .getOrDefault(emptyList())
+            } ?: emptyList()
+            if (more.isNotEmpty()) {
+                _discoverFeed.value = _discoverFeed.value + more
+                preloadTracks(more.take(3))
             }
             _isLoadingMore.value = false
         }
@@ -128,10 +171,12 @@ class SearchViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoadingMore.value = true
             followingPage++
-            val more = musicRepository.getFollowingFeed(page = followingPage, pageSize = pageSize)
-            val newTracks = more.getOrDefault(emptyList())
-            if (newTracks.isNotEmpty()) {
-                _followingFeed.value = _followingFeed.value + newTracks
+            val more = withTimeoutOrNull(12_000L) {
+                musicRepository.getFollowingFeed(page = followingPage, pageSize = pageSize)
+                    .getOrDefault(emptyList())
+            } ?: emptyList()
+            if (more.isNotEmpty()) {
+                _followingFeed.value = _followingFeed.value + more
             }
             _isLoadingMore.value = false
         }
@@ -159,6 +204,9 @@ class SearchViewModel @Inject constructor(
     // Играть трек — использует предзагруженный source если есть
     fun playFeedTrack(track: Track) {
         val url = track.previewUrl ?: return
+        // НЕ обновляем PlayerStateHolder здесь — фид играет через отдельный feedPlayer,
+        // и мини-плеер должен показывать только треки из основного плеера (AudioPlayerService).
+        // PlayerStateHolder обновляется только когда пользователь явно нажимает на трек.
         if (currentTrackUrl == url) {
             feedPlayer.volume = if (_isFeedMuted.value) 0f else 1f
             if (!feedPlayer.isPlaying) feedPlayer.play()
@@ -220,24 +268,85 @@ class SearchViewModel @Inject constructor(
             _error.value = null
             // Параллельный поиск треков, артистов и плейлистов
             launch {
-                musicRepository.searchArtists(query, limit = 5)
-                    .onSuccess { artists ->
-                        val q = query.trim().lowercase()
-                        val match = artists.firstOrNull { artist ->
-                            val name = artist.name.lowercase()
-                            name == q || name.startsWith(q) || q.length >= 3 && name.contains(q)
-                        }
-                        _artistResults.value = if (match != null) listOf(match) else emptyList()
-                    }
-                    .onFailure { _artistResults.value = emptyList() }
+                // Сначала ищем в Audius, параллельно в custom_artists
+                val audiusArtistJob = async {
+                    withTimeoutOrNull(8_000L) {
+                        musicRepository.searchArtists(query, limit = 5).getOrNull() ?: emptyList()
+                    } ?: emptyList()
+                }
+                val customArtistJob = async {
+                    withTimeoutOrNull(5_000L) {
+                        authRepository.searchCustomArtists(query, limit = 3)
+                    } ?: emptyList()
+                }
+
+                val audiusArtists = audiusArtistJob.await()
+                val customArtists = customArtistJob.await()
+
+                val q = query.trim().lowercase()
+
+                // Ищем совпадение в Audius
+                val audiusMatch = audiusArtists.firstOrNull { artist ->
+                    val name = artist.name.lowercase()
+                    name == q || name.startsWith(q) || q.length >= 3 && name.contains(q)
+                }
+
+                // Ищем совпадение в custom_artists
+                val customMatch = customArtists.firstOrNull { artist ->
+                    val name = artist.name.lowercase()
+                    name == q || name.startsWith(q) || q.length >= 3 && name.contains(q)
+                }
+
+                // Приоритет: custom artist если есть, иначе Audius
+                _artistResults.value = when {
+                    customMatch != null -> listOf(
+                        com.example.lumisound.data.remote.ArtistSearchResult(
+                            artist = com.example.lumisound.data.remote.AudiusArtistFull(
+                                id = customMatch.id,
+                                name = customMatch.name,
+                                bio = customMatch.bio,
+                                location = customMatch.location,
+                                isVerified = customMatch.isVerified,
+                                profilePicture = null,
+                                coverPhoto = null,
+                                followerCount = null,
+                                trackCount = null,
+                                playlistCount = null
+                            ),
+                            avatarUrl = customMatch.avatarUrl
+                        )
+                    )
+                    audiusMatch != null -> listOf(
+                        com.example.lumisound.data.remote.ArtistSearchResult(artist = audiusMatch)
+                    )
+                    else -> emptyList()
+                }
             }
             launch {
                 authRepository.searchPublicPlaylists(query, limit = 8)
                     .let { _playlistResults.value = it }
             }
+            // Поиск custom_tracks из Supabase (треки добавленные через admin-панель)
             musicRepository.searchTracks(query, limit = 20)
-                .onSuccess { tracks ->
-                    _searchResults.value = tracks
+                .onSuccess { audiusTracks ->
+                    // Конвертируем custom_tracks в Track и добавляем в начало результатов
+                    val customTracks = authRepository.searchCustomTracks(query, limit = 10)
+                        .map { ct ->
+                            com.example.lumisound.data.model.Track(
+                                id = "custom_${ct.id}",
+                                name = ct.title,
+                                artist = ct.artistName ?: "Unknown",
+                                artistId = ct.artistId,
+                                artistImageUrl = ct.artistAvatarUrl,
+                                imageUrl = ct.coverUrl,
+                                hdImageUrl = ct.coverUrl,
+                                previewUrl = ct.audioUrl,
+                                genre = ct.genre,
+                                playCount = ct.playCount,
+                                duration = ct.duration
+                            )
+                        }
+                    _searchResults.value = customTracks + audiusTracks
                     _isLoading.value = false
                 }
                 .onFailure { exception ->

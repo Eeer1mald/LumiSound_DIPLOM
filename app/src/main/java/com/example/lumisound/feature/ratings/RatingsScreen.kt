@@ -57,6 +57,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.lumisound.data.model.Track
 import com.example.lumisound.data.remote.SupabaseService
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
@@ -79,7 +80,8 @@ fun RatingsScreen(
     navController: NavHostController,
     ratedTracks: List<RatedTrack> = emptyList(),
     onTrackClick: (String) -> Unit = {},
-    viewModel: RatingsViewModel = hiltViewModel()
+    viewModel: RatingsViewModel = hiltViewModel(),
+    playerViewModel: com.example.lumisound.feature.nowplaying.PlayerViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -179,7 +181,7 @@ fun RatingsScreen(
                 }
             }
 
-            // ── Табы ───────────────────────────────────────────────────
+            // ── Табы в стиле плейлистов ────────────────────────────────
             item(key = "tabs") {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
@@ -190,11 +192,17 @@ fun RatingsScreen(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp)
+                                .height(40.dp)
                                 .background(
-                                    if (active) Brush.linearGradient(listOf(GradientStart, GradientEnd))
-                                    else Brush.linearGradient(listOf(LocalAppColors.current.surface.copy(alpha = 0.4f), LocalAppColors.current.surface.copy(alpha = 0.4f))),
-                                    RoundedCornerShape(14.dp)
+                                    if (active) GradientStart.copy(alpha = 0.18f)
+                                    else LocalAppColors.current.surface,
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (active) GradientStart.copy(alpha = 0.6f)
+                                    else Color.White.copy(alpha = 0.07f),
+                                    RoundedCornerShape(12.dp)
                                 )
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                     viewModel.setTab(tab)
@@ -203,7 +211,7 @@ fun RatingsScreen(
                         ) {
                             Text(
                                 tab.label,
-                                color = if (active) Color.White else LocalAppColors.current.secondary,
+                                color = if (active) GradientStart else LocalAppColors.current.secondary,
                                 fontSize = 13.sp,
                                 fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal
                             )
@@ -222,10 +230,10 @@ fun RatingsScreen(
             } else when (state.activeTab) {
                 RatingsTab.BEST -> {
                     if (state.bestReviews.isEmpty()) {
-                        item { EmptyState("Нет рецензий", "Добавьте треки и артистов в избранное, чтобы видеть лучшие рецензии") }
+                        item { EmptyState("Нет рецензий", "Пока никто не написал рецензий") }
                     } else {
                         items(state.bestReviews, key = { "best_${it.id}" }) { rating ->
-                            ReviewCard(rating = rating, navController = navController)
+                            ReviewCard(rating = rating, navController = navController, playerViewModel = playerViewModel, getStreamUrl = { viewModel.getStreamUrl(it) })
                         }
                     }
                 }
@@ -234,7 +242,7 @@ fun RatingsScreen(
                         item { EmptyState("Нет ваших рецензий", "Нажмите 💬 в плеере, чтобы написать рецензию") }
                     } else {
                         items(state.myReviews, key = { "mine_${it.id}" }) { rating ->
-                            ReviewCard(rating = rating, navController = navController)
+                            ReviewCard(rating = rating, navController = navController, playerViewModel = playerViewModel, getStreamUrl = { viewModel.getStreamUrl(it) })
                         }
                     }
                 }
@@ -247,7 +255,9 @@ fun RatingsScreen(
 @Composable
 private fun ReviewCard(
     rating: SupabaseService.TrackRatingResponse,
-    navController: NavHostController? = null
+    navController: NavHostController? = null,
+    playerViewModel: com.example.lumisound.feature.nowplaying.PlayerViewModel? = null,
+    getStreamUrl: ((String) -> String)? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
     val scoreBrush = remember { androidx.compose.ui.graphics.Brush.linearGradient(listOf(GradientStart, GradientEnd)) }
@@ -262,23 +272,99 @@ private fun ReviewCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 6.dp)
-            .background(LocalAppColors.current.surface.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+            .padding(horizontal = 16.dp, vertical = 5.dp)
+            .background(LocalAppColors.current.surface, RoundedCornerShape(18.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(18.dp))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { expanded = !expanded }
-            .padding(16.dp)
+            .padding(14.dp)
     ) {
-        // Аватар + имя автора
+        // Трек + оценка в одной строке
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Обложка — кликабельная для запуска трека
+            Box(modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(LocalAppColors.current.background)
+                .then(
+                    if (playerViewModel != null)
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            val isCustom = rating.audiusTrackId.startsWith("custom_")
+                            val streamUrl = if (isCustom) null
+                                else getStreamUrl?.invoke(rating.audiusTrackId)
+                            playerViewModel.playTrack(
+                                Track(
+                                    id = rating.audiusTrackId,
+                                    name = rating.trackTitle,
+                                    artist = rating.trackArtist,
+                                    imageUrl = rating.trackCoverUrl,
+                                    hdImageUrl = rating.trackCoverUrl,
+                                    previewUrl = streamUrl
+                                )
+                            )
+                        }
+                    else Modifier
+                )
+            ) {
+                if (!rating.trackCoverUrl.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current).data(rating.trackCoverUrl).crossfade(false).build(),
+                        contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(modifier = Modifier.fillMaxSize().background(
+                        Brush.linearGradient(listOf(GradientStart.copy(alpha = 0.3f), Color.Black.copy(alpha = 0.5f)))
+                    ), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.MusicNote, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(22.dp))
+                    }
+                }
+            }
+
+            // Название + артист
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(rating.trackTitle, color = LocalAppColors.current.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(rating.trackArtist, color = LocalAppColors.current.secondary, fontSize = 12.sp, maxLines = 1)
+            }
+
+            // Оценка — компактный бейдж
+            rating.overallScore?.let { score ->
+                Box(
+                    modifier = Modifier
+                        .background(brush = scoreBrush, shape = RoundedCornerShape(10.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        String.format("%.1f", score),
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = (-0.5).sp
+                    )
+                }
+            }
+
+            Icon(
+                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                null, tint = LocalAppColors.current.secondary.copy(alpha = 0.6f), modifier = Modifier.size(18.dp)
+            )
+        }
+
+        // Автор + дата
         val displayName = rating.username?.takeIf { it.isNotBlank() } ?: "Пользователь"
         Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(LocalAppColors.current.surface)
+                modifier = Modifier.size(20.dp).clip(CircleShape).background(LocalAppColors.current.background)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                         if (rating.userId.isNotBlank()) {
                             navController?.navigate(
@@ -295,94 +381,53 @@ private fun ReviewCard(
                         contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
                     )
                 } else {
-                    Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Person, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(11.dp))
                 }
             }
-            Text(displayName, color = LocalAppColors.current.secondary, fontSize = 12.sp)
-            Spacer(modifier = Modifier.weight(1f))
-            Text(dateStr, color = LocalAppColors.current.secondary, fontSize = 11.sp)
-        }
-
-        // Трек + оценка
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(LocalAppColors.current.surface)) {
-                if (!rating.trackCoverUrl.isNullOrEmpty()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current).data(rating.trackCoverUrl).crossfade(false).build(),
-                        contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+            Text(displayName, color = LocalAppColors.current.secondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            if (dateStr.isNotBlank()) {
+                Text("·", color = LocalAppColors.current.secondary.copy(alpha = 0.4f), fontSize = 11.sp)
+                Text(dateStr, color = LocalAppColors.current.secondary.copy(alpha = 0.6f), fontSize = 11.sp)
+            }
+            // Репутация
+            if (rating.reputation != 0) {
+                Spacer(modifier = Modifier.weight(1f))
+                val repColor = if (rating.reputation > 0) Color(0xFF2ECC71) else Color(0xFFE74C3C)
+                Box(
+                    modifier = Modifier
+                        .background(repColor.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        "${if (rating.reputation > 0) "+" else ""}${rating.reputation}",
+                        color = repColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
                     )
-                } else {
-                    Icon(Icons.Default.MusicNote, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(24.dp).align(Alignment.Center))
                 }
             }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(rating.trackTitle, color = LocalAppColors.current.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(rating.trackArtist, color = LocalAppColors.current.secondary, fontSize = 12.sp, maxLines = 1)
-                Spacer(modifier = Modifier.height(6.dp))
-                rating.overallScore?.let { score ->
-                    Row(
-                        modifier = Modifier
-                            .background(brush = scoreBrush, shape = RoundedCornerShape(8.dp))
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(Icons.Default.Star, null, tint = Color.White, modifier = Modifier.size(12.dp))
-                        Text(String.format("%.1f", score), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
-                        Text("/10", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
-                    }
-                }
-            }
-            Icon(
-                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(20.dp)
-            )
         }
 
         // Текст рецензии
         rating.review?.takeIf { it.isNotBlank() }?.let { review ->
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
+            Spacer(modifier = Modifier.height(10.dp))
             Text(
                 review,
-                color = LocalAppColors.current.onBackground.copy(alpha = 0.9f),
-                fontSize = 14.sp,
-                lineHeight = 21.sp,
+                color = LocalAppColors.current.onBackground.copy(alpha = 0.85f),
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
                 maxLines = if (expanded) Int.MAX_VALUE else 3,
                 overflow = if (expanded) TextOverflow.Visible else TextOverflow.Ellipsis
             )
-        }
-
-        // Репутация
-        Spacer(modifier = Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val repColor = when {
-                rating.reputation > 0 -> Color(0xFF2ECC71)
-                rating.reputation < 0 -> Color(0xFFE74C3C)
-                else -> LocalAppColors.current.secondary
-            }
-            if (rating.reputation != 0) {
-                Text(
-                    "${if (rating.reputation > 0) "+" else ""}${rating.reputation}",
-                    color = repColor,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
         }
 
         // Раскрытые критерии
         AnimatedVisibility(visible = expanded, enter = expandVertically(), exit = shrinkVertically()) {
             Column {
                 Spacer(modifier = Modifier.height(10.dp))
-                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.07f)))
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
                 Spacer(modifier = Modifier.height(10.dp))
                 val criteria = listOf(
                     "Рифмы / Образы" to rating.rhymeScore,
@@ -394,13 +439,14 @@ private fun ReviewCard(
                 criteria.filter { it.second != null }.forEach { (label, score) ->
                     if (score != null) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(label, color = LocalAppColors.current.secondary, fontSize = 11.sp, modifier = Modifier.width(130.dp))
                             Box(modifier = Modifier.weight(1f).height(4.dp).background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(2.dp))) {
-                                Box(modifier = Modifier.fillMaxWidth(score / 10f).height(4.dp).background(GradientStart, RoundedCornerShape(2.dp)))
+                                Box(modifier = Modifier.fillMaxWidth(score / 10f).height(4.dp)
+                                    .background(Brush.horizontalGradient(listOf(GradientStart, GradientEnd)), RoundedCornerShape(2.dp)))
                             }
                             Text("$score", color = GradientStart, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(20.dp), textAlign = TextAlign.End)
                         }

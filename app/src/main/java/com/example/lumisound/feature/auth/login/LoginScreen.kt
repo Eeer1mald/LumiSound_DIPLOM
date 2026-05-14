@@ -1,84 +1,47 @@
 ﻿package com.example.lumisound.feature.auth.login
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import com.google.android.gms.auth.api.signin.GoogleSignInClient
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
-import com.example.lumisound.R
 import com.example.lumisound.feature.auth.components.GradientButton
-import com.example.lumisound.feature.auth.components.LabeledTextField
-import com.example.lumisound.ui.theme.ColorAccentSecondary
-import com.example.lumisound.ui.theme.LumiSoundTheme
-import com.example.lumisound.ui.theme.Typography
-import com.example.lumisound.ui.theme.LocalAppColors
+import com.example.lumisound.ui.theme.GradientEnd
+import com.example.lumisound.ui.theme.GradientStart
 
 @Composable
 fun LoginScreen(
@@ -89,50 +52,45 @@ fun LoginScreen(
     onNavigateToForgot: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
 
-    // Google Sign-In setup - безопасная инициализация для устройств без Google Services
-    val googleSignInClient: GoogleSignInClient? = remember {
-        try {
-            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestIdToken("720567253667-nseep0m3eahgo2gpe7dr0uvrnp3k35iu.apps.googleusercontent.com")
-                .requestEmail()
-                .build()
-            GoogleSignIn.getClient(context, gso)
-        } catch (e: Exception) {
-            // Google Services недоступны (например, на Huawei без GMS)
-            null
-        }
+    val isSubmitting = uiState is LoginUiState.Submitting
+
+    val email = when (val s = uiState) {
+        is LoginUiState.Idle -> s.email
+        is LoginUiState.InputChanged -> s.email
+        is LoginUiState.Submitting -> s.email
+        is LoginUiState.Error -> s.email
+        is LoginUiState.Success -> s.email
     }
-
-    val googleSignInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (googleSignInClient == null) {
-            // Google Sign-In недоступен на этом устройстве
-            return@rememberLauncherForActivityResult
-        }
-        
-        coroutineScope.launch {
-            try {
-                val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-                val account: GoogleSignInAccount? = task.getResult(ApiException::class.java)
-                val idToken = account?.idToken ?: ""
-                if (idToken.isNotEmpty()) {
-                    viewModel.handleAction(LoginUiAction.GoogleSignIn(idToken))
-                } else {
-                    snackbarHostState.showSnackbar("Не удалось получить токен Google")
-                }
-            } catch (e: ApiException) {
-                snackbarHostState.showSnackbar("Ошибка входа через Google: ${e.message ?: "Неизвестная ошибка"}")
-            } catch (e: Exception) {
-                // Обработка других исключений (например, когда Google Services недоступны)
-                snackbarHostState.showSnackbar("Google Sign-In недоступен на этом устройстве")
-            }
-        }
+    val password = when (val s = uiState) {
+        is LoginUiState.Idle -> s.password
+        is LoginUiState.InputChanged -> s.password
+        is LoginUiState.Submitting -> s.password
+        is LoginUiState.Error -> s.password
+        is LoginUiState.Success -> s.password
+    }
+    val isPasswordVisible = when (val s = uiState) {
+        is LoginUiState.Idle -> s.isPasswordVisible
+        is LoginUiState.InputChanged -> s.isPasswordVisible
+        is LoginUiState.Submitting -> s.isPasswordVisible
+        is LoginUiState.Error -> s.isPasswordVisible
+        is LoginUiState.Success -> false
+    }
+    val emailError = when (val s = uiState) {
+        is LoginUiState.InputChanged -> s.emailError
+        is LoginUiState.Error -> s.emailError
+        else -> null
+    }
+    val passwordError = when (val s = uiState) {
+        is LoginUiState.InputChanged -> s.passwordError
+        is LoginUiState.Error -> s.passwordError
+        else -> null
+    }
+    val globalError = when (val s = uiState) {
+        is LoginUiState.Error -> if (s.emailError == null && s.passwordError == null) s.errorMessage else null
+        else -> null
     }
 
     LaunchedEffect(Unit) {
@@ -140,306 +98,227 @@ fun LoginScreen(
             when (effect) {
                 is LoginSideEffect.NavigateToHome -> onNavigateToHome()
                 is LoginSideEffect.NavigateToProfileSetup -> onNavigateToProfileSetup()
-                is LoginSideEffect.ShowSnackbar -> snackbarHostState.showSnackbar(effect.message)
+                is LoginSideEffect.ShowSnackbar -> { /* handled inline */ }
             }
         }
     }
 
-    val currentState = uiState
-    val isSubmitting = currentState is LoginUiState.Submitting
-    
-    // Animation states - все сразу видимо
-    var showLogo by remember { mutableStateOf(true) }
-    var showFields by remember { mutableStateOf(true) }
-    var showButton by remember { mutableStateOf(true) }
-
-    Scaffold(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        LocalAppColors.current.background,
-                        Color(0xFF0A0B1A),
-                        LocalAppColors.current.background
-                    )
-                )
-            ),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = Color.Transparent,
-        contentWindowInsets = WindowInsets(0)
-    ) { paddingValues ->
+            .background(Color(0xFF0A0B1A))
+            .imePadding()
+    ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .background(LocalAppColors.current.background)
+                .size(280.dp)
+                .offset(x = (-70).dp, y = (-50).dp)
+                .background(
+                    Brush.radialGradient(listOf(GradientStart.copy(alpha = 0.2f), Color.Transparent)),
+                    CircleShape
+                )
+                .blur(50.dp)
+        )
+        Box(
+            modifier = Modifier
+                .size(220.dp)
+                .align(Alignment.BottomEnd)
+                .offset(x = 50.dp, y = 50.dp)
+                .background(
+                    Brush.radialGradient(listOf(GradientEnd.copy(alpha = 0.15f), Color.Transparent)),
+                    CircleShape
+                )
+                .blur(40.dp)
+        )
+
+        // Закреплённая ссылка внизу с разделителем
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .navigationBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp)
-                    .padding(top = paddingValues.calculateTopPadding() + 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color.White.copy(alpha = 0.1f))
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onNavigateToRegister() }
             ) {
-                val scrollState = rememberScrollState()
-                Column(
-                    modifier = Modifier
-                        .verticalScroll(scrollState)
-                        .weight(1f, fill = false),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                Spacer(modifier = Modifier.height(48.dp))
+                Text("Нет аккаунта? ", color = Color.White.copy(alpha = 0.4f), fontSize = 14.sp)
+                Text("Зарегистрироваться", color = GradientStart, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
-                // Logo with animation
-                AnimatedVisibility(
-                    visible = showLogo,
-                    enter = fadeIn(animationSpec = tween(300)),
-                    exit = fadeOut(animationSpec = tween(150))
-                ) {
-                    val logoId = remember { context.resources.getIdentifier("logo", "drawable", context.packageName) }
-                    val logoPlaceholderId = remember {
-                        context.resources.getIdentifier("ic_logo_foreground", "drawable", context.packageName)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = 28.dp)
+                .padding(bottom = 56.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(48.dp))
+
+            val logoId = remember { context.resources.getIdentifier("logo", "drawable", context.packageName) }
+            val placeholderId = remember { context.resources.getIdentifier("ic_logo_foreground", "drawable", context.packageName) }
+            Image(
+                painter = painterResource(
+                    id = when {
+                        logoId != 0 -> logoId
+                        placeholderId != 0 -> placeholderId
+                        else -> android.R.drawable.ic_menu_gallery
                     }
-                    Image(
-                        painter = painterResource(
-                            id = when {
-                                logoId != 0 -> logoId
-                                logoPlaceholderId != 0 -> logoPlaceholderId
-                                else -> android.R.drawable.ic_menu_gallery
-                            }
-                        ),
-                        contentDescription = "LumiSound logo",
-                        modifier = Modifier
-                            .fillMaxWidth(0.5f)
-                    )
+                ),
+                contentDescription = "LumiSound",
+                modifier = Modifier.fillMaxWidth(0.9f)
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+            Text("Войдите в свой аккаунт", color = Color.White.copy(alpha = 0.45f), fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(36.dp))
+
+            AuthTextField(
+                value = email,
+                onValueChange = { viewModel.handleAction(LoginUiAction.EmailChanged(it)) },
+                label = "Email",
+                placeholder = "your@email.com",
+                isError = emailError != null,
+                errorText = emailError,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            AuthTextField(
+                value = password,
+                onValueChange = { viewModel.handleAction(LoginUiAction.PasswordChanged(it)) },
+                label = "Пароль",
+                placeholder = "Введите пароль",
+                isError = passwordError != null,
+                errorText = passwordError,
+                visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    focusManager.clearFocus()
+                    viewModel.handleAction(LoginUiAction.Submit)
+                }),
+                trailingIcon = {
+                    IconButton(onClick = { viewModel.handleAction(LoginUiAction.TogglePasswordVisibility) }) {
+                        Icon(
+                            if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
+            )
 
-                Spacer(modifier = Modifier.height(40.dp))
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.CenterEnd) {
+                Text(
+                    "Забыли пароль?",
+                    color = GradientStart,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onNavigateToForgot() }
+                )
+            }
 
-                // Email field with animation
-                AnimatedVisibility(
-                    visible = showFields,
-                    enter = fadeIn(animationSpec = tween(300)),
-                    exit = fadeOut(animationSpec = tween(150))
-                ) {
+            Spacer(modifier = Modifier.height(28.dp))
+
+            AnimatedVisibility(visible = globalError != null, enter = fadeIn(tween(200)), exit = fadeOut(tween(150))) {
+                if (globalError != null) {
                     Column {
-                        val email = when (currentState) {
-                            is LoginUiState.Idle -> currentState.email
-                            is LoginUiState.InputChanged -> currentState.email
-                            is LoginUiState.Submitting -> currentState.email
-                            is LoginUiState.Error -> currentState.email
-                            is LoginUiState.Success -> currentState.email
-                        }
-                        val emailError = when (currentState) {
-                            is LoginUiState.Idle -> currentState.emailError
-                            is LoginUiState.InputChanged -> currentState.emailError
-                            is LoginUiState.Submitting -> null
-                            is LoginUiState.Error -> currentState.emailError
-                            is LoginUiState.Success -> null
-                        }
-
-                        LabeledTextField(
-                            value = email,
-                            onValueChange = { viewModel.handleAction(LoginUiAction.EmailChanged(it)) },
-                            label = stringResource(R.string.email),
-                            placeholder = stringResource(R.string.email),
-                            isError = emailError != null,
-                            errorText = emailError,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Email,
-                                imeAction = ImeAction.Next
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                            ),
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .semantics { contentDescription = "login_email" },
-                            testTag = "login_email"
-                        )
-
+                                .background(Color(0xFFFF5C6C).copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                                .border(1.dp, Color(0xFFFF5C6C).copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Warning, null, tint = Color(0xFFFF5C6C), modifier = Modifier.size(16.dp))
+                            Text(globalError, color = Color(0xFFFF5C6C), fontSize = 13.sp)
+                        }
                         Spacer(modifier = Modifier.height(16.dp))
-
-                        // Password field
-                        val password = when (currentState) {
-                            is LoginUiState.Idle -> currentState.password
-                            is LoginUiState.InputChanged -> currentState.password
-                            is LoginUiState.Submitting -> currentState.password
-                            is LoginUiState.Error -> currentState.password
-                            is LoginUiState.Success -> currentState.password
-                        }
-                        val isPasswordVisible = when (currentState) {
-                            is LoginUiState.Idle -> currentState.isPasswordVisible
-                            is LoginUiState.InputChanged -> currentState.isPasswordVisible
-                            is LoginUiState.Submitting -> currentState.isPasswordVisible
-                            is LoginUiState.Error -> currentState.isPasswordVisible
-                            is LoginUiState.Success -> false
-                        }
-                        val passwordError = when (currentState) {
-                            is LoginUiState.Idle -> currentState.passwordError
-                            is LoginUiState.InputChanged -> currentState.passwordError
-                            is LoginUiState.Submitting -> null
-                            is LoginUiState.Error -> currentState.passwordError
-                            is LoginUiState.Success -> null
-                        }
-
-                        LabeledTextField(
-                            value = password,
-                            onValueChange = { viewModel.handleAction(LoginUiAction.PasswordChanged(it)) },
-                            label = stringResource(R.string.password),
-                            placeholder = stringResource(R.string.password),
-                            isError = passwordError != null,
-                            errorText = passwordError,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
-                                imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onDone = { viewModel.handleAction(LoginUiAction.Submit) }
-                            ),
-                            visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            trailingIcon = {
-                                IconButton(
-                                    onClick = { viewModel.handleAction(LoginUiAction.TogglePasswordVisibility) },
-                                    modifier = Modifier.semantics { contentDescription = "Toggle password visibility" }
-                                ) {
-                                    Icon(
-                                        imageVector = if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                        contentDescription = if (isPasswordVisible) "Hide password" else "Show password"
-                                    )
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .semantics { contentDescription = "login_password" },
-                            testTag = "login_password"
-                        )
-
-                        Spacer(modifier = Modifier.height(32.dp))
-
-                        // Forgot password link
-                        Text(
-                            text = stringResource(R.string.forgot_password),
-                            color = ColorAccentSecondary,
-                            style = Typography.bodyMedium,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.End)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) { viewModel.handleAction(LoginUiAction.GoToForgot) }
-                                .semantics { contentDescription = "login_forgot" },
-                            fontSize = 14.sp,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
-                        )
                     }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Submit button with animation
-                AnimatedVisibility(
-                    visible = showButton,
-                    enter = fadeIn(animationSpec = tween(300)),
-                    exit = fadeOut(animationSpec = tween(150))
-                ) {
-                    val email = when (currentState) {
-                        is LoginUiState.Idle -> currentState.email
-                        is LoginUiState.InputChanged -> currentState.email
-                        is LoginUiState.Submitting -> currentState.email
-                        is LoginUiState.Error -> currentState.email
-                        is LoginUiState.Success -> currentState.email
-                    }
-                    val password = when (currentState) {
-                        is LoginUiState.Idle -> currentState.password
-                        is LoginUiState.InputChanged -> currentState.password
-                        is LoginUiState.Submitting -> currentState.password
-                        is LoginUiState.Error -> currentState.password
-                        is LoginUiState.Success -> currentState.password
-                    }
-                    val emailError = when (currentState) {
-                        is LoginUiState.Idle -> currentState.emailError
-                        is LoginUiState.InputChanged -> currentState.emailError
-                        is LoginUiState.Submitting -> null
-                        is LoginUiState.Error -> currentState.emailError
-                        is LoginUiState.Success -> null
-                    }
-                    val passwordError = when (currentState) {
-                        is LoginUiState.Idle -> currentState.passwordError
-                        is LoginUiState.InputChanged -> currentState.passwordError
-                        is LoginUiState.Submitting -> null
-                        is LoginUiState.Error -> currentState.passwordError
-                        is LoginUiState.Success -> null
-                    }
-                    val isValid = emailError == null && passwordError == null && email.isNotEmpty() && password.isNotEmpty()
-
-                    GradientButton(
-                        text = if (isSubmitting) "" else stringResource(R.string.login),
-                        enabled = isValid && !isSubmitting,
-                        onClick = { viewModel.handleAction(LoginUiAction.Submit) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "login_submit" },
-                        testTag = "login_submit"
-                    )
-                }
-
-                    Spacer(modifier = Modifier.height(32.dp))
-                }
-                
-                // Register link - всегда внизу, не скроллится
-                Row(
-                    modifier = Modifier
-                        .padding(bottom = paddingValues.calculateBottomPadding() + 16.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { onNavigateToRegister() }
-                        .semantics { contentDescription = "login_register" },
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.no_account),
-                        color = LocalAppColors.current.secondary,
-                        fontSize = 14.sp
-                    )
-                    Text(
-                        text = " ${stringResource(R.string.register)}",
-                        color = ColorAccentSecondary,
-                        fontSize = 14.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                    )
                 }
             }
 
-            // Loading overlay
-            AnimatedVisibility(
-                visible = isSubmitting,
-                enter = fadeIn(animationSpec = tween(150)), // Уменьшено в 2 раза
-                exit = fadeOut(animationSpec = tween(150)) // Уменьшено в 2 раза
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(LocalAppColors.current.background.copy(alpha = 0.7f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = LocalAppColors.current.secondary)
-                }
-            }
+            val isValid = emailError == null && passwordError == null && email.isNotEmpty() && password.isNotEmpty()
+            GradientButton(
+                text = if (isSubmitting) "" else "Войти",
+                enabled = isValid && !isSubmitting,
+                onClick = {
+                    focusManager.clearFocus()
+                    viewModel.handleAction(LoginUiAction.Submit)
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
         }
     }
 }
 
-@Preview(showBackground = false, uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES)
 @Composable
-private fun LoginScreenPreview() {
-    LumiSoundTheme {
-        LoginScreen()
+fun AuthTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    placeholder: String,
+    isError: Boolean = false,
+    errorText: String? = null,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    trailingIcon: @Composable (() -> Unit)? = null
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(label, color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(bottom = 6.dp))
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text(placeholder, color = Color.White.copy(alpha = 0.25f), fontSize = 14.sp) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            isError = isError,
+            visualTransformation = visualTransformation,
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            trailingIcon = trailingIcon,
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = GradientStart.copy(alpha = 0.7f),
+                unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
+                errorBorderColor = Color(0xFFFF5C6C).copy(alpha = 0.7f),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                errorTextColor = Color.White,
+                cursorColor = GradientStart,
+                focusedContainerColor = Color.White.copy(alpha = 0.05f),
+                unfocusedContainerColor = Color.White.copy(alpha = 0.04f),
+                errorContainerColor = Color(0xFFFF5C6C).copy(alpha = 0.05f)
+            )
+        )
+        if (isError && errorText != null) {
+            Text(errorText, color = Color(0xFFFF5C6C), fontSize = 12.sp,
+                modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+        }
     }
 }
-

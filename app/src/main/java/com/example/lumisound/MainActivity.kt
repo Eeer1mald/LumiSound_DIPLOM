@@ -78,6 +78,9 @@ class MainActivity : ComponentActivity() {
 
         themeManager.setTheme(sessionManager.getThemeMode())
 
+        // Очищаем токены при свежей установке (после удаления и переустановки)
+        sessionManager.clearIfFreshInstall()
+
         val synthesisCode = intent?.data?.let { uri ->
             when {
                 uri.scheme == "lumisound" && uri.host == "synthesis" ->

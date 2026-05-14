@@ -58,6 +58,12 @@ data class AudiusArtistFull(
     @SerialName("instagram_handle") val instagramHandle: String? = null
 )
 
+/** Обёртка для отображения артиста в поиске — поддерживает и Audius, и custom artists */
+data class ArtistSearchResult(
+    val artist: AudiusArtistFull,
+    val avatarUrl: String? = null  // для custom artists — прямой URL аватара
+)
+
 @Serializable
 data class AudiusArtistResponse(
     val data: AudiusArtistFull? = null
@@ -206,6 +212,11 @@ class AudiusApiService @Inject constructor(
         return artwork?.get(size)?.jsonPrimitive?.content
             ?: artwork?.get("150x150")?.jsonPrimitive?.content
             ?: artwork?.get("1000x1000")?.jsonPrimitive?.content
+    }
+
+    /** Возвращает URL только для точного размера, без fallback */
+    fun getArtworkUrlExact(artwork: JsonObject?, size: String): String? {
+        return artwork?.get(size)?.jsonPrimitive?.content
     }
 
     fun getProfilePictureUrl(profilePicture: JsonObject?, size: String = "480x480"): String? {

@@ -23,6 +23,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -88,6 +91,7 @@ import com.example.lumisound.ui.theme.GradientStart
 import com.example.lumisound.ui.theme.LocalAppColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.activity.compose.BackHandler
 
 data class GenreItem(val name: String, val gradient: Pair<Color, Color>)
 
@@ -108,6 +112,12 @@ fun SearchScreen(
 
     // Выбранный плейлист для открытия
     var selectedPlaylist by remember { mutableStateOf<com.example.lumisound.data.remote.SupabaseService.PlaylistResponse?>(null) }
+
+    // Системная кнопка "назад": закрываем плейлист если открыт
+    BackHandler(enabled = selectedPlaylist != null) {
+        selectedPlaylist = null
+    }
+
     val error by viewModel.error.collectAsState()
     val discoverFeed by viewModel.discoverFeed.collectAsState()
     val followingFeed by viewModel.followingFeed.collectAsState()
@@ -150,6 +160,7 @@ fun SearchScreen(
             isFeedMuted = isFeedMuted,
             mainPlayerIsPlaying = mainPlayerIsPlaying,
             hasMainTrack = hasMainTrack,
+            showFloatingComments = playerStateHolder.showFloatingComments,
             onTapScreen = {
                 if (isFeedMuted && mainPlayerIsPlaying) playerViewModel.togglePlayPause()
                 viewModel.toggleMute()
@@ -255,6 +266,7 @@ private fun FeedPager(
     isFeedMuted: Boolean,
     mainPlayerIsPlaying: Boolean,
     hasMainTrack: Boolean,
+    showFloatingComments: Boolean = true,
     onTapScreen: () -> Unit,
     onRefresh: () -> Unit
 ) {
@@ -263,21 +275,42 @@ private fun FeedPager(
     val scope = rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(36.dp))
-            }
-        } else {
-            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-                val feed = if (page == 0) discoverFeed else followingFeed
+        // Табы всегда поверх — рендерим их первыми чтобы были кликабельны
+        // даже во время загрузки
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+            val feed = if (page == 0) discoverFeed else followingFeed
 
-                if (feed.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(36.dp))
+            if (isLoading || feed.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(32.dp))
+                        Text(
+                            if (page == 0) "Загружаем рекомендации..." else "Загружаем треки для вас...",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 14.sp
+                        )
+                        if (!isLoading) {
+                            // Фид пустой после загрузки — показываем кнопку обновить
+                            Box(
+                                modifier = Modifier
+                                    .background(GradientStart.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
+                                    .border(1.dp, GradientStart.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+                                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onRefresh() }
+                                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                            ) {
+                                Text("Обновить", color = GradientStart, fontSize = 13.sp)
+                            }
+                        }
                     }
-                } else {
-                    TikTokFeed(tracks = feed, viewModel = viewModel, navController = navController, isFeedMuted = isFeedMuted, onTapScreen = onTapScreen, hasMainTrack = hasMainTrack, isDiscoverTab = page == 0)
                 }
+            } else {
+                TikTokFeed(tracks = feed, viewModel = viewModel, navController = navController, isFeedMuted = isFeedMuted, onTapScreen = onTapScreen, hasMainTrack = hasMainTrack, isDiscoverTab = page == 0, showFloatingComments = showFloatingComments)
             }
         }
 
@@ -313,8 +346,10 @@ private fun TikTokFeed(
     isFeedMuted: Boolean,
     onTapScreen: () -> Unit,
     hasMainTrack: Boolean,
-    isDiscoverTab: Boolean = true
+    isDiscoverTab: Boolean = true,
+    showFloatingComments: Boolean = true
 ) {
+    var anySheetOpen by remember { mutableStateOf(false) }
     val pagerState = rememberPagerState(pageCount = { tracks.size })
     val isFeedPlaying by viewModel.isFeedPlaying.collectAsState()
 
@@ -324,7 +359,10 @@ private fun TikTokFeed(
     // При смене страницы — автоплей + предзагрузка (mute НЕ сбрасываем — сохраняем состояние)
     LaunchedEffect(pagerState.currentPage) {
         val track = tracks.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
-        viewModel.playFeedTrack(track)
+        // Играем только если есть previewUrl — иначе ждём без блокировки UI
+        if (!track.previewUrl.isNullOrBlank()) {
+            viewModel.playFeedTrack(track)
+        }
         viewModel.preloadAround(tracks, pagerState.currentPage)
 
         // Предзагрузка картинок соседних треков через Coil
@@ -347,7 +385,8 @@ private fun TikTokFeed(
     VerticalPager(
         state = pagerState,
         modifier = Modifier.fillMaxSize(),
-        beyondViewportPageCount = 1
+        beyondViewportPageCount = 1,
+        userScrollEnabled = !anySheetOpen
     ) { page ->
         val track = tracks[page]
         val isThisPagePlaying = pagerState.currentPage == page && isFeedPlaying
@@ -360,7 +399,9 @@ private fun TikTokFeed(
                 onTapScreen = onTapScreen,
                 navController = navController,
                 hasMainTrack = hasMainTrack,
-                isCurrentPage = pagerState.currentPage == page
+                isCurrentPage = pagerState.currentPage == page,
+                showFloatingComments = showFloatingComments,
+                onSheetOpenChange = { anySheetOpen = it }
             )
         }
     }
@@ -375,17 +416,28 @@ private fun TikTokTrackCard(
     navController: NavHostController,
     hasMainTrack: Boolean = true,
     isCurrentPage: Boolean = false,
-    reviewViewModel: ReviewViewModel = hiltViewModel()
+    showFloatingComments: Boolean = true,
+    onSheetOpenChange: (Boolean) -> Unit = {},
+    reviewViewModel: ReviewViewModel = hiltViewModel(key = track.id)
 ) {
     var showStatsSheet by remember { mutableStateOf(false) }
     var showCommentsSheet by remember { mutableStateOf(false) }
     var showReviewsSheet by remember { mutableStateOf(false) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
 
+    // Уведомляем родителя когда открывается/закрывается любая шторка
+    val anySheetOpen = showStatsSheet || showCommentsSheet || showReviewsSheet || showAddToPlaylist
+    LaunchedEffect(anySheetOpen) {
+        onSheetOpenChange(anySheetOpen)
+    }
+
     val reviewState by reviewViewModel.state.collectAsState()
     // Загружаем данные только когда карточка активна
     LaunchedEffect(track.id, isCurrentPage) {
-        if (isCurrentPage) reviewViewModel.loadForTrack(track.id)
+        // Загружаем для текущей страницы сразу.
+        // Для соседних карточек (beyondViewportPageCount=1) тоже загружаем —
+        // чтобы оценки были готовы до нажатия на кнопку статистики.
+        reviewViewModel.loadForTrack(track.id)
     }
 
     val avgScore = reviewState.averageRating?.avgOverall
@@ -447,9 +499,10 @@ private fun TikTokTrackCard(
         var showFloating by remember { mutableStateOf(false) }
         val comments = reviewState.comments
         LaunchedEffect(comments) {
-            if (comments.isNotEmpty()) {
+            if (comments.isNotEmpty() && showFloatingComments) {
                 while (true) {
                     delay(5000)
+                    if (!showFloatingComments) { showFloating = false; break }
                     floatingComment = comments.random().comment.take(40)
                     showFloating = true
                     delay(3000)
@@ -598,13 +651,16 @@ private fun TikTokTrackCard(
             )
         }
 
-        AnimatedVisibility(visible = showStatsSheet, enter = slideInVertically { it }, exit = slideOutVertically { it }, modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        AnimatedVisibility(visible = showStatsSheet, enter = slideInVertically { it }, exit = slideOutVertically { it },
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.52f)) {
             TrackStatsSheet(state = reviewState, bottomBarPadding = bottomOffset, onDismiss = { showStatsSheet = false })
         }
-        AnimatedVisibility(visible = showCommentsSheet, enter = slideInVertically { it }, exit = slideOutVertically { it }, modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        AnimatedVisibility(visible = showCommentsSheet, enter = slideInVertically { it }, exit = slideOutVertically { it },
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.52f)) {
             CommentsPreviewSheet(state = reviewState, track = track, navController = navController, bottomBarPadding = bottomOffset, onDismiss = { showCommentsSheet = false })
         }
-        AnimatedVisibility(visible = showReviewsSheet, enter = slideInVertically { it }, exit = slideOutVertically { it }, modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        AnimatedVisibility(visible = showReviewsSheet, enter = slideInVertically { it }, exit = slideOutVertically { it },
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.52f)) {
             ReviewsPreviewSheet(state = reviewState, track = track, navController = navController, bottomBarPadding = bottomOffset, onDismiss = { showReviewsSheet = false })
         }
 
@@ -669,11 +725,11 @@ private fun TrackStatsSheet(
 ) {
     var dragOffset by remember { mutableStateOf(0f) }
     Column(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxSize()
             .graphicsLayer { translationY = dragOffset.coerceAtLeast(0f) }
             .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 16.dp)
-            .padding(bottom = bottomBarPadding)
             .pointerInput(Unit) {
                 detectVerticalDragGestures( 
                     onDragEnd = {
@@ -745,11 +801,11 @@ private fun CommentsPreviewSheet(
     val playerStateHolder = getPlayerStateHolder()
     var dragOffset by remember { mutableStateOf(0f) }
     Column(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxSize()
             .graphicsLayer { translationY = dragOffset.coerceAtLeast(0f) }
             .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 16.dp)
-            .padding(bottom = bottomBarPadding)
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragEnd = {
@@ -762,7 +818,6 @@ private fun CommentsPreviewSheet(
                     }
                 )
             }
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
     ) {
         Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
         Spacer(modifier = Modifier.height(12.dp))
@@ -778,18 +833,56 @@ private fun CommentsPreviewSheet(
         if (state.comments.isEmpty()) {
             Text("Нет комментариев", color = LocalAppColors.current.secondary, fontSize = 14.sp, modifier = Modifier.padding(vertical = 8.dp))
         } else {
-            state.comments.take(3).forEach { comment ->
-                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(LocalAppColors.current.surface), contentAlignment = Alignment.Center) {
-                        if (!comment.userAvatarUrl.isNullOrEmpty()) {
-                            AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(comment.userAvatarUrl).crossfade(false).build(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                        } else {
-                            Icon(Icons.Default.MusicNote, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(14.dp))
+            androidx.compose.foundation.lazy.LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 300.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)
+            ) {
+                items(state.comments) { comment ->
+                    val currentUserId = state.currentUserId
+                    val isOwn = currentUserId != null && comment.userId == currentUserId
+                    val canNavigate = !isOwn && comment.userId.isNotBlank()
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(LocalAppColors.current.surface)
+                                .then(
+                                    if (canNavigate)
+                                        Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                            onDismiss()
+                                            navController.navigate(com.example.lumisound.navigation.MainDestination.PublicProfile().createRoute(comment.userId, comment.username ?: "Пользователь", comment.userAvatarUrl))
+                                        }
+                                    else Modifier
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (!comment.userAvatarUrl.isNullOrEmpty()) {
+                                AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(comment.userAvatarUrl).crossfade(false).build(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                            } else {
+                                Icon(Icons.Default.MusicNote, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(14.dp))
+                            }
                         }
-                    }
-                    Column {
-                        Text(comment.username ?: "Пользователь", color = LocalAppColors.current.secondary, fontSize = 11.sp)
-                        Text(comment.comment, color = LocalAppColors.current.onBackground, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                comment.username ?: "Пользователь",
+                                color = if (canNavigate) LocalAppColors.current.secondary else GradientStart,
+                                fontSize = 11.sp,
+                                modifier = if (canNavigate)
+                                    Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                        onDismiss()
+                                        navController.navigate(com.example.lumisound.navigation.MainDestination.PublicProfile().createRoute(comment.userId, comment.username ?: "Пользователь", comment.userAvatarUrl))
+                                    }
+                                else Modifier
+                            )
+                            Text(comment.comment, color = LocalAppColors.current.onBackground, fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
             }
@@ -809,11 +902,11 @@ private fun ReviewsPreviewSheet(
     val playerStateHolder = getPlayerStateHolder()
     var dragOffset by remember { mutableStateOf(0f) }
     Column(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxSize()
             .graphicsLayer { translationY = dragOffset.coerceAtLeast(0f) }
             .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 16.dp)
-            .padding(bottom = bottomBarPadding)
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragEnd = {
@@ -826,7 +919,6 @@ private fun ReviewsPreviewSheet(
                     }
                 )
             }
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
     ) {
         Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
         Spacer(modifier = Modifier.height(12.dp))
@@ -843,13 +935,19 @@ private fun ReviewsPreviewSheet(
             Text("Нет рецензий", color = LocalAppColors.current.secondary, fontSize = 14.sp, modifier = Modifier.padding(vertical = 8.dp))
         } else {
             reviews.take(2).forEach { rating ->
+                val currentUserId = state.currentUserId
+                val isOwn = currentUserId != null && rating.userId == currentUserId
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Аватар
                     Box(
-                        modifier = Modifier.size(30.dp).clip(CircleShape).background(LocalAppColors.current.surface),
+                        modifier = Modifier.size(30.dp).clip(CircleShape).background(LocalAppColors.current.surface)
+                            .then(if (!isOwn && rating.userId != null)
+                                Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                    onDismiss()
+                                    navController.navigate(com.example.lumisound.navigation.MainDestination.PublicProfile().createRoute(rating.userId, rating.username ?: "Пользователь", rating.userAvatarUrl))
+                                } else Modifier),
                         contentAlignment = Alignment.Center
                     ) {
                         if (!rating.userAvatarUrl.isNullOrEmpty()) {
@@ -865,7 +963,14 @@ private fun ReviewsPreviewSheet(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
                                 rating.username?.takeIf { it.isNotBlank() } ?: "Пользователь",
-                                color = LocalAppColors.current.secondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                                color = if (isOwn) GradientStart else LocalAppColors.current.secondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = if (!isOwn && rating.userId != null)
+                                    Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                        onDismiss()
+                                        navController.navigate(com.example.lumisound.navigation.MainDestination.PublicProfile().createRoute(rating.userId, rating.username ?: "Пользователь", rating.userAvatarUrl))
+                                    } else Modifier
                             )
                             rating.overallScore?.let { score ->
                                 Box(
@@ -888,7 +993,7 @@ private fun ReviewsPreviewSheet(
 @Composable
 private fun SearchResultsList(
     results: List<Track>,
-    artistResults: List<com.example.lumisound.data.remote.AudiusArtistFull>,
+    artistResults: List<com.example.lumisound.data.remote.ArtistSearchResult>,
     playlistResults: List<com.example.lumisound.data.remote.SupabaseService.PlaylistResponse> = emptyList(),
     isLoading: Boolean,
     error: String?,
@@ -902,15 +1007,19 @@ private fun SearchResultsList(
         results.isEmpty() && artistResults.isEmpty() && playlistResults.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Ничего не найдено", color = LocalAppColors.current.secondary, fontSize = 14.sp) }
         else -> LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // Артист
-            val topArtist = artistResults.firstOrNull()
-            if (topArtist != null) {
+            val topArtistResult = artistResults.firstOrNull()
+            if (topArtistResult != null) {
+                val topArtist = topArtistResult.artist
                 item(key = "artist_${topArtist.id}") {
-                    ArtistSearchCard(artist = topArtist, onArtistClick = {
+                    ArtistSearchCard(artistResult = topArtistResult, onArtistClick = {
+                        // Для custom artist передаём UUID, для Audius — обычный ID
+                        val imageUrl = topArtistResult.avatarUrl
+                            ?: com.example.lumisound.data.remote.AudiusApiServiceHelper.getProfilePictureUrl(topArtist.profilePicture)
                         navController.navigate(
                             com.example.lumisound.navigation.MainDestination.Artist().createRoute(
                                 topArtist.id,
                                 topArtist.name,
-                                com.example.lumisound.data.remote.AudiusApiServiceHelper.getProfilePictureUrl(topArtist.profilePicture)
+                                imageUrl
                             )
                         )
                     })
@@ -944,10 +1053,13 @@ private fun SearchResultsList(
 
 @Composable
 private fun ArtistSearchCard(
-    artist: com.example.lumisound.data.remote.AudiusArtistFull,
+    artistResult: com.example.lumisound.data.remote.ArtistSearchResult,
     onArtistClick: () -> Unit
 ) {
-    val avatarUrl = com.example.lumisound.data.remote.AudiusApiServiceHelper.getProfilePictureUrl(artist.profilePicture)
+    val artist = artistResult.artist
+    // Для custom artists используем avatarUrl напрямую, для Audius — через helper
+    val avatarUrl = artistResult.avatarUrl
+        ?: com.example.lumisound.data.remote.AudiusApiServiceHelper.getProfilePictureUrl(artist.profilePicture)
 
     Row(
         modifier = Modifier

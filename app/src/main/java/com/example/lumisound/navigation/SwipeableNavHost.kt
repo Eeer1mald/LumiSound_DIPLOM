@@ -1,5 +1,6 @@
 ﻿package com.example.lumisound.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -99,6 +100,12 @@ fun SwipeableNavHost(
     }
 
     val currentTrack by playerStateHolder.currentTrack.collectAsState()
+
+    // Системная кнопка "назад": если не на первой вкладке — возвращаем на home,
+    // если уже на home — не перехватываем (система выйдет из приложения).
+    BackHandler(enabled = localCurrentRoute != "home") {
+        scope.launch { pagerState.animateScrollToPage(0) }
+    }
 
     val appPreloadViewModel: AppPreloadViewModel = hiltViewModel()
     LaunchedEffect(Unit) {
@@ -322,7 +329,7 @@ private fun MiniPlayerWrapper(
             navController.navigate(MainDestination.Artist().createRoute(artistId, artistName, artistImageUrl))
         },
         onNextTrack = { playerViewModel.nextTrack() },
-        onPreviousTrack = { playerViewModel.previousTrack() },
+        onPreviousTrack = { if (playerViewModel.hasPrevious) playerViewModel.previousTrack() },
         hasPrevious = playerViewModel.hasPrevious,
         nextTrackInfo = miniNextTrack,
         prevTrackInfo = miniPrevTrack,

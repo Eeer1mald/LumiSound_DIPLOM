@@ -143,10 +143,10 @@ class AuthRepositoryImpl @Inject constructor(
         }
     }
     
-    override suspend fun saveProfile(accessToken: String, username: String, email: String, bio: String?, favoriteGenre: String?, avatarUrl: String?): Result<Unit> {
+    override suspend fun saveProfile(accessToken: String, username: String, email: String, bio: String?, avatarUrl: String?): Result<Unit> {
         return runCatching {
             val userId = sessionManager.getUserId()
-            supabase.upsertProfile(accessToken = accessToken, userId = userId, username = username, email = email, bio = bio, favoriteGenre = favoriteGenre, avatarUrl = avatarUrl)
+            supabase.upsertProfile(accessToken = accessToken, userId = userId, username = username, email = email, bio = bio, avatarUrl = avatarUrl)
             cachedProfile = null // инвалидируем кэш профиля после обновления
             Unit
         }
@@ -409,5 +409,25 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun findExistingSynthesisBySession(accessToken: String, sessionId: String): String? {
         return supabase.findExistingSynthesisBySession(accessToken, sessionId)
+    }
+
+    override suspend fun submitReport(accessToken: String, report: SupabaseService.ReportInsert): Result<Unit> {
+        return supabase.submitReport(accessToken, report)
+    }
+
+    override suspend fun submitBanAppeal(accessToken: String, appeal: SupabaseService.BanAppealInsert): Result<Unit> {
+        return supabase.submitBanAppeal(accessToken, appeal)
+    }
+
+    override suspend fun getMyBan(accessToken: String): SupabaseService.UserBanResponse? {
+        return supabase.getMyBan(accessToken)
+    }
+
+    override suspend fun searchCustomTracks(query: String, limit: Int): List<SupabaseService.CustomTrackResponse> {
+        return supabase.searchCustomTracks(query, limit)
+    }
+
+    override suspend fun searchCustomArtists(query: String, limit: Int): List<SupabaseService.CustomArtistResponse> {
+        return supabase.searchCustomArtists(query, limit)
     }
 }

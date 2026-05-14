@@ -20,14 +20,10 @@
         android:theme="@style/Theme.LumiSound">
         <activity
             android:name=".MainActivity"
-            android:exported="true"
+            android:exported="false"
             android:label="@string/app_name"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.LumiSound">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -47,7 +43,66 @@
                 <data android:scheme="https" android:host="dmwnegtvotnrajzpyfad.supabase.co" android:pathPrefix="/synthesis" />
             </intent-filter>
         </activity>
-        
+
+        <!-- Иконка: чёрная (по умолчанию, enabled) -->
+        <activity-alias
+            android:name=".MainActivityIconBlack"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@drawable/icon_black"
+            android:roundIcon="@drawable/icon_black"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Иконка: белая -->
+        <activity-alias
+            android:name=".MainActivityIconWhite"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/icon_white"
+            android:roundIcon="@drawable/icon_white"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Иконка: розовая -->
+        <activity-alias
+            android:name=".MainActivityIconPink"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/icon_pink"
+            android:roundIcon="@drawable/icon_pink"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Иконка: синяя -->
+        <activity-alias
+            android:name=".MainActivityIconBlue"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/icon_blue"
+            android:roundIcon="@drawable/icon_blue"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>        
         <activity
             android:name="com.yalantis.ucrop.UCropActivity"
             android:screenOrientation="portrait"

@@ -17,7 +17,7 @@ interface AuthRepository {
     fun getPendingUsername(email: String): String?
     suspend fun clearPendingUsername(email: String)
     suspend fun syncProfileIfNeeded(accessToken: String, email: String)
-    suspend fun saveProfile(accessToken: String, username: String, email: String, bio: String?, favoriteGenre: String?, avatarUrl: String?): Result<Unit>
+    suspend fun saveProfile(accessToken: String, username: String, email: String, bio: String?, avatarUrl: String?): Result<Unit>
     fun getUserId(): String?
     suspend fun uploadAvatar(accessToken: String, userId: String, fileBytes: ByteArray, fileName: String): Result<String>
     suspend fun deleteAvatarByUrl(accessToken: String, avatarUrl: String): Result<Unit>
@@ -95,4 +95,13 @@ interface AuthRepository {
     suspend fun getOrCreateSynthesisPlaylist(token: String, sessionId: String, hostUserId: String, name: String, description: String, synthesisCode: String): Result<String>
     suspend fun findExistingSynthesis(accessToken: String, otherUserId: String): String?
     suspend fun findExistingSynthesisBySession(accessToken: String, sessionId: String): String?
+
+    // Reports & Bans
+    suspend fun submitReport(accessToken: String, report: SupabaseService.ReportInsert): Result<Unit>
+    suspend fun submitBanAppeal(accessToken: String, appeal: SupabaseService.BanAppealInsert): Result<Unit>
+    suspend fun getMyBan(accessToken: String): SupabaseService.UserBanResponse?
+
+    // Custom tracks
+    suspend fun searchCustomTracks(query: String, limit: Int = 10): List<SupabaseService.CustomTrackResponse>
+    suspend fun searchCustomArtists(query: String, limit: Int = 5): List<SupabaseService.CustomArtistResponse>
 }

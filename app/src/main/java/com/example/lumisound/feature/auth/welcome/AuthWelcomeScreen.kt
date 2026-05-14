@@ -1,36 +1,26 @@
 ﻿package com.example.lumisound.feature.auth.welcome
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.lumisound.R
-import com.example.lumisound.feature.auth.components.GradientButton
+import androidx.compose.material3.Text
 import com.example.lumisound.ui.theme.GradientEnd
 import com.example.lumisound.ui.theme.GradientStart
 import com.example.lumisound.ui.theme.LocalAppColors
@@ -40,74 +30,123 @@ fun AuthWelcomeScreen(
     onLoginClick: () -> Unit,
     onRegisterClick: () -> Unit
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(LocalAppColors.current.background)
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(Color(0xFF0A0B1A))
     ) {
-        Spacer(modifier = Modifier.height(80.dp))
-
-        val context = LocalContext.current
-        val logoId = remember { context.resources.getIdentifier("logo", "drawable", context.packageName) }
-        val placeholderId = remember { context.resources.getIdentifier("ic_logo_foreground", "drawable", context.packageName) }
-
-        androidx.compose.foundation.Image(
-            painter = painterResource(
-                id = when {
-                    logoId != 0 -> logoId
-                    placeholderId != 0 -> placeholderId
-                    else -> android.R.drawable.ic_menu_gallery
-                }
-            ),
-            contentDescription = stringResource(R.string.app_name),
+        // Фоновые декоративные круги
+        Box(
             modifier = Modifier
-                .fillMaxWidth(0.5f)
+                .size(300.dp)
+                .offset(x = (-80).dp, y = (-60).dp)
+                .background(
+                    Brush.radialGradient(listOf(GradientStart.copy(alpha = 0.25f), Color.Transparent)),
+                    CircleShape
+                )
+                .blur(60.dp)
         )
-
-        Spacer(modifier = Modifier.height(40.dp))
-
-        Text(
-            text = stringResource(R.string.tagline),
-            color = Color(0xFF9A9AB0),
-            fontSize = 16.sp,
-            textAlign = TextAlign.Center,
-            fontWeight = FontWeight.Medium
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        GradientButton(
-            text = stringResource(R.string.login),
-            onClick = onLoginClick,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = onRegisterClick,
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(18.dp),
-            colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = Color.Transparent,
-                contentColor = Color(0xFFE6E6EB)
-            ),
-            border = BorderStroke(1.5.dp, remember {
-                Brush.horizontalGradient(listOf(GradientStart.copy(alpha = 0.6f), GradientEnd.copy(alpha = 0.6f)))
-            })
+                .size(250.dp)
+                .align(Alignment.BottomEnd)
+                .offset(x = 60.dp, y = 60.dp)
+                .background(
+                    Brush.radialGradient(listOf(GradientEnd.copy(alpha = 0.2f), Color.Transparent)),
+                    CircleShape
+                )
+                .blur(50.dp)
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = stringResource(R.string.register),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
+            Spacer(modifier = Modifier.weight(1f))
 
-        Spacer(modifier = Modifier.height(16.dp))
+            // Логотип из ресурсов
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val logoId = remember { context.resources.getIdentifier("logo", "drawable", context.packageName) }
+            val placeholderId = remember { context.resources.getIdentifier("ic_logo_foreground", "drawable", context.packageName) }
+            androidx.compose.foundation.Image(
+                painter = painterResource(
+                    id = when {
+                        logoId != 0 -> logoId
+                        placeholderId != 0 -> placeholderId
+                        else -> android.R.drawable.ic_menu_gallery
+                    }
+                ),
+                contentDescription = "LumiSound",
+                modifier = Modifier.fillMaxWidth(0.7f)
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                "Слушай, оценивай, делись музыкой\nс теми, кто понимает",
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 15.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 22.sp
+            )
+
+            Spacer(modifier = Modifier.weight(1.2f))
+
+            // Кнопка Войти — градиентная
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .background(
+                        Brush.linearGradient(listOf(GradientStart, GradientEnd)),
+                        RoundedCornerShape(16.dp)
+                    )
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onLoginClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Войти",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Кнопка Регистрация — outline
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
+                    .border(
+                        1.dp,
+                        Brush.linearGradient(listOf(GradientStart.copy(alpha = 0.5f), GradientEnd.copy(alpha = 0.5f))),
+                        RoundedCornerShape(16.dp)
+                    )
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onRegisterClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Создать аккаунт",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+        }
     }
 }
-

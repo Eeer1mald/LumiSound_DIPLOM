@@ -9,7 +9,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.ComponentActivity
 import com.example.lumisound.ui.theme.LocalAppColors
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
@@ -218,8 +221,6 @@ fun MainNavGraph(
         composable(
             route = MainDestination.NowPlaying().route,
             arguments = listOf(navArgument("trackId") { type = NavType.StringType }),
-            // Убираем анимации переходов, чтобы страница не обновлялась при возврате
-            // Это гарантирует, что предыдущая страница сохранит свое состояние
             enterTransition = { androidx.compose.animation.EnterTransition.None },
             exitTransition = { androidx.compose.animation.ExitTransition.None },
             popEnterTransition = { androidx.compose.animation.EnterTransition.None },
@@ -389,10 +390,14 @@ fun MainNavGraph(
             exitTransition = { fadeOut(animationSpec = tween(200)) }
         ) {
             val context = LocalContext.current
+            val sharedSettingsVm: com.example.lumisound.feature.settings.SettingsViewModel =
+                androidx.hilt.navigation.compose.hiltViewModel(
+                    viewModelStoreOwner = context as androidx.activity.ComponentActivity
+                )
             SettingsScreen(
                 onBack = { navController.popBackStack() },
+                viewModel = sharedSettingsVm,
                 onLogout = {
-                    // Перезапускаем Activity — самый надёжный способ сбросить всё состояние
                     val activity = context as? android.app.Activity
                     activity?.let {
                         val intent = it.intent
@@ -452,10 +457,15 @@ fun MainNavGraph(
 
             val reviewTrack by playerStateHolder.reviewTrack.collectAsState()
             val currentTrack by playerStateHolder.currentTrack.collectAsState()
-            // Приоритет: reviewTrack с совпадающим ID → currentTrack с совпадающим ID → минимальный трек из параметров
             val track = reviewTrack?.takeIf { it.id == trackId }
                 ?: currentTrack?.takeIf { it.id == trackId }
                 ?: Track(id = trackId, name = trackTitle, artist = trackArtist)
+
+            // Используем activity-scoped ViewModel чтобы шарить данные между review и reviews
+            val sharedReviewViewModel: com.example.lumisound.feature.ratings.ReviewViewModel =
+                androidx.hilt.navigation.compose.hiltViewModel(
+                    viewModelStoreOwner = androidx.compose.ui.platform.LocalContext.current as androidx.activity.ComponentActivity
+                )
 
             com.example.lumisound.feature.ratings.ReviewScreen(
                 track = track,
@@ -465,7 +475,8 @@ fun MainNavGraph(
                         MainDestination.Reviews().createRoute(track.id, track.name, track.artist)
                     )
                 },
-                navController = navController
+                navController = navController,
+                viewModel = sharedReviewViewModel
             )
         }
 
@@ -491,9 +502,16 @@ fun MainNavGraph(
                 ?: currentTrack?.takeIf { it.id == trackId }
                 ?: Track(id = trackId, name = trackTitle, artist = trackArtist)
 
+            // Тот же activity-scoped ViewModel — данные уже загружены из ReviewScreen
+            val sharedReviewViewModel: com.example.lumisound.feature.ratings.ReviewViewModel =
+                androidx.hilt.navigation.compose.hiltViewModel(
+                    viewModelStoreOwner = androidx.compose.ui.platform.LocalContext.current as androidx.activity.ComponentActivity
+                )
+
             com.example.lumisound.feature.ratings.ReviewsScreen(
                 track = track,
-                onClose = { navController.popBackStack() }
+                onClose = { navController.popBackStack() },
+                viewModel = sharedReviewViewModel
             )
         }
         }
@@ -505,15 +523,19 @@ fun MainNavGraph(
         val isOnMainTabs = currentRoute == "home"
 
         // Глобальный тост "Кэш очищен" — поверх любого экрана
-        val settingsVm: com.example.lumisound.feature.settings.SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+        // Используем activity-scoped ViewModel чтобы шарить состояние с SettingsScreen
+        val settingsVm: com.example.lumisound.feature.settings.SettingsViewModel =
+            androidx.hilt.navigation.compose.hiltViewModel(
+                viewModelStoreOwner = androidx.compose.ui.platform.LocalContext.current as androidx.activity.ComponentActivity
+            )
         val settingsState by settingsVm.state.collectAsState()
         var showCacheToast by remember { mutableStateOf(false) }
         LaunchedEffect(settingsState.cacheCleared) {
             if (settingsState.cacheCleared) {
                 showCacheToast = true
-                settingsVm.clearMessages()
                 delay(2500)
                 showCacheToast = false
+                settingsVm.clearMessages()
             }
         }
         androidx.compose.animation.AnimatedVisibility(
@@ -533,21 +555,14 @@ fun MainNavGraph(
         }
         val isOnReviewScreen = currentRoute?.startsWith("review") == true
 
-        // Задержка показа мини-плеера после закрытия полного плеера —
-        // чтобы не мигал в момент popBackStack()
-        var miniPlayerVisible by remember { mutableStateOf(false) }
-        LaunchedEffect(isOnFullPlayer) {
-            if (!isOnFullPlayer) {
-                // Ждём 2 кадра (33мс) прежде чем показать мини-плеер
-                delay(33)
-                miniPlayerVisible = true
-            } else {
-                miniPlayerVisible = false
-            }
-        }
+        val isPlayerClosing by playerStateHolder.isPlayerClosing.collectAsState()
 
-        if (globalCurrentTrack != null && miniPlayerVisible && !isOnFullPlayer && !isOnMainTabs && !isOnReviewScreen) {
-            // Состояние свайпа вверх для открытия плеера
+        val showMiniPlayer = globalCurrentTrack != null
+            && !isOnMainTabs
+            && !isOnReviewScreen
+            && !isOnFullPlayer
+
+        if (showMiniPlayer) {
             var globalMiniRawProgress by remember { mutableFloatStateOf(0f) }
             var globalMiniIsDragging by remember { mutableStateOf(false) }
             var globalMiniLastVelocity by remember { mutableFloatStateOf(0f) }
@@ -596,12 +611,13 @@ fun MainNavGraph(
                         )
                     },
                     onNextTrack = { globalPlayerViewModel.nextTrack() },
-                    onPreviousTrack = { globalPlayerViewModel.previousTrack() },
+                    onPreviousTrack = { if (globalPlayerViewModel.hasPrevious) globalPlayerViewModel.previousTrack() },
                     hasPrevious = globalPlayerViewModel.hasPrevious,
                     nextTrackInfo = globalPlaylist.getOrNull(globalCurrentIdx + 1),
                     prevTrackInfo = globalPlaylist.getOrNull(globalCurrentIdx - 1),
                     avgScore = globalPlayerViewModel.avgScore.collectAsState().value,
-                    animationProgress = globalMiniProgress,
+                    animationProgress = if (isPlayerClosing) playerStateHolder.closeProgress.value else globalMiniProgress,
+                    extraOffsetY = 0f,
                     onAnimationProgressChange = { globalMiniRawProgress = it.coerceIn(0f, 1f) },
                     onDragStart = { globalMiniIsDragging = true; globalMiniLastVelocity = 0f },
                     onDragVelocityChange = { globalMiniLastVelocity = it },
@@ -619,7 +635,7 @@ fun MainNavGraph(
                         } else {
                             globalMiniTargetProgress = 0f
                             globalMiniScope.launch {
-                                kotlinx.coroutines.delay(300)
+                                delay(300)
                                 globalMiniRawProgress = 0f
                             }
                         }

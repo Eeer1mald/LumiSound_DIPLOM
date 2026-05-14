@@ -1,6 +1,7 @@
 package com.example.lumisound.di
 
 import android.content.Context
+import com.example.lumisound.data.cache.AppDataCache
 import com.example.lumisound.data.repository.AuthRepository
 import com.example.lumisound.data.repository.AuthRepositoryImpl
 import dagger.Binds
@@ -26,11 +27,6 @@ abstract class AppModule {
     ): AuthRepository
 
     companion object {
-        /**
-         * Предоставляет Context приложения.
-         * Обычно Context доступен через @ApplicationContext напрямую,
-         * но этот провайдер может быть полезен для явной инъекции.
-         */
         @Provides
         @Singleton
         fun provideContext(@ApplicationContext context: Context): Context = context

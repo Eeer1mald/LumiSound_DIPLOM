@@ -31,6 +31,10 @@ object NetworkModule {
                     }
                 )
             }
+            engine {
+                connectTimeout = 10_000  // 10 секунд на подключение
+                socketTimeout = 15_000   // 15 секунд на чтение
+            }
         }
     }
 }

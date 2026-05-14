@@ -1,6 +1,7 @@
 ﻿package com.example.lumisound.feature.home
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -60,6 +61,16 @@ fun HomeScreen(
     var selectedPlaylist by remember { mutableStateOf<SupabaseService.PlaylistResponse?>(null) }
     var showSynthesis by remember { mutableStateOf(false) }
 
+    // Системная кнопка "назад": закрываем overlay в порядке приоритета
+    BackHandler(enabled = selectedPlaylist != null || showAllPlaylists || showCreateMenu || showSynthesis) {
+        when {
+            selectedPlaylist != null -> selectedPlaylist = null
+            showSynthesis -> showSynthesis = false
+            showCreateMenu -> showCreateMenu = false
+            showAllPlaylists -> showAllPlaylists = false
+        }
+    }
+
     // Для рандомного трека — меняется при каждом нажатии
     var randomSeed by remember { mutableStateOf(0) }
     val randomTrack = remember(randomSeed, state.recentTracks) {
@@ -84,12 +95,26 @@ fun HomeScreen(
         ) {
             // ── Header ──────────────────────────────────────────────
             item(key = "header") {
+                val context = LocalContext.current
+                val logoId = remember {
+                    context.resources.getIdentifier("logo", "drawable", context.packageName)
+                        .takeIf { it != 0 }
+                        ?: context.resources.getIdentifier("ic_logo_foreground", "drawable", context.packageName)
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("LumiSound", color = LocalAppColors.current.onBackground, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                    if (logoId != null && logoId != 0) {
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(id = logoId),
+                            contentDescription = "LumiSound",
+                            modifier = Modifier.height(21.dp)
+                        )
+                    } else {
+                        Text("LumiSound", color = LocalAppColors.current.onBackground, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         // Рандомный трек
                         Box(
@@ -126,7 +151,7 @@ fun HomeScreen(
             }
 
             // ── Активность — первой ──────────────────────────────────
-            if (state.stats.totalRatings > 0 || state.stats.totalComments > 0) {
+            if (state.stats.reviewsThisWeek > 0 || state.stats.ratingsThisWeek > 0 || state.stats.commentsThisWeek > 0) {
                 item(key = "stats") {
                     StatsSection(stats = state.stats)
                     Spacer(modifier = Modifier.height(20.dp))
@@ -135,18 +160,14 @@ fun HomeScreen(
 
             // ── Три вкладки ──────────────────────────────────────────
             item(key = "tabs") {
-                PlaylistTabSelector(selected = state.selectedTab, onSelect = { playlistViewModel.selectTab(it) })
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
-            // ── Контент вкладки ──────────────────────────────────────
+            // ── Бокс плейлистов 2×2 ──────────────────────────────────
             item(key = "playlist_content") {
-                PlaylistTabContent(
+                PlaylistPreviewBox(
                     state = state,
-                    onSeeAll = { showAllPlaylists = true },
-                    onCreateClick = { playlistViewModel.createPlaylist() },
-                    onToggleLike = { playlistViewModel.toggleLike(it) },
-                    onToggleVisibility = { id, pub -> playlistViewModel.toggleVisibility(id, pub) },
+                    onOpenPlaylists = { showAllPlaylists = true },
                     onPlaylistClick = { selectedPlaylist = it }
                 )
             }
@@ -289,6 +310,140 @@ fun HomeScreen(
     }
 }
 
+// ── Бокс-превью плейлистов 2×2 ──────────────────────────────────────────────
+@Composable
+fun PlaylistPreviewBox(
+    state: PlaylistUiState,
+    onOpenPlaylists: () -> Unit,
+    onPlaylistClick: (SupabaseService.PlaylistResponse) -> Unit
+) {
+    val allPlaylists = (state.myPlaylists + state.topPlaylists + state.recommendedPlaylists).distinctBy { it.id }
+    val preview = allPlaylists.take(4)
+
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+        // Заголовок секции
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Плейлисты", color = LocalAppColors.current.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onOpenPlaylists() },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text("Все", color = GradientStart, fontSize = 13.sp)
+                Icon(Icons.Default.KeyboardArrowRight, null, tint = GradientStart, modifier = Modifier.size(16.dp))
+            }
+        }
+
+        // Бокс 2×2
+        Box(
+            modifier = Modifier.fillMaxWidth()
+                .background(LocalAppColors.current.surface, RoundedCornerShape(20.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onOpenPlaylists() }
+                .padding(12.dp)
+        ) {
+            if (state.isLoading) {
+                Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(28.dp))
+                }
+            } else if (preview.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(160.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.QueueMusic, null, tint = LocalAppColors.current.secondary, modifier = Modifier.size(32.dp))
+                        Text("Нет плейлистов", color = LocalAppColors.current.secondary, fontSize = 13.sp)
+                    }
+                }
+            } else {
+                // Сетка 1×2 (одна строка, два плейлиста)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    preview.getOrNull(0)?.let { pl ->
+                        PlaylistPreviewCell(
+                            playlist = pl,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onPlaylistClick(pl) }
+                        )
+                    } ?: Box(modifier = Modifier.weight(1f))
+
+                    preview.getOrNull(1)?.let { pl ->
+                        PlaylistPreviewCell(
+                            playlist = pl,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onPlaylistClick(pl) }
+                        )
+                    } ?: Box(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistPreviewCell(
+    playlist: SupabaseService.PlaylistResponse,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                .clip(RoundedCornerShape(14.dp))
+                .background(LocalAppColors.current.background),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!playlist.coverUrl.isNullOrEmpty()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current).data(playlist.coverUrl).crossfade(false).memoryCacheKey(playlist.coverUrl).build(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize()
+                        .background(Brush.linearGradient(listOf(GradientStart.copy(alpha = 0.4f), Color.Black.copy(alpha = 0.7f)))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.MusicNote, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
+                }
+            }
+            // Синтез-бейдж
+            if (playlist.isSynthesis) {
+                Box(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(5.dp)
+                        .background(Brush.linearGradient(listOf(Color(0xFF6C3FD9), Color(0xFFD93F6C))), CircleShape)
+                        .size(18.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(10.dp))
+                }
+            }
+        }
+        Text(
+            playlist.name,
+            color = LocalAppColors.current.onBackground,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            "${playlist.trackCount} ${trackWord(playlist.trackCount)}",
+            color = LocalAppColors.current.secondary,
+            fontSize = 10.sp
+        )
+    }
+}
+
 // ── Три квадратика-вкладки ───────────────────────────────────────────────────
 @Composable
 fun PlaylistTabSelector(selected: PlaylistTab, onSelect: (PlaylistTab) -> Unit) {
@@ -308,6 +463,7 @@ fun PlaylistTabSelector(selected: PlaylistTab, onSelect: (PlaylistTab) -> Unit) 
                 Text(
                     text = when (tab) {
                         PlaylistTab.MY -> "Мои"
+                        PlaylistTab.LIKED -> "Любимое"
                         PlaylistTab.RECOMMENDED -> "Для вас"
                         PlaylistTab.TOP -> "Топ"
                     },
@@ -362,6 +518,7 @@ private fun PlaylistTabContent(
             Text(
                 when (state.selectedTab) {
                     PlaylistTab.MY -> "Мои плейлисты"
+                    PlaylistTab.LIKED -> "Любимые плейлисты"
                     PlaylistTab.RECOMMENDED -> "Рекомендации"
                     PlaylistTab.TOP -> "Топ плейлисты"
                 },
@@ -507,9 +664,9 @@ private fun StatsSection(stats: HomeStats) {
     ) {
         Text("За неделю", color = LocalAppColors.current.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatChip(icon = Icons.Default.Star, value = stats.ratingsThisWeek.toString(), label = "оценок", modifier = Modifier.weight(1f))
-            StatChip(icon = Icons.Default.BarChart, value = stats.totalRatings.toString(), label = "всего оценок", modifier = Modifier.weight(1f))
-            StatChip(icon = Icons.Default.ChatBubbleOutline, value = stats.totalComments.toString(), label = "комментариев", modifier = Modifier.weight(1f))
+            StatChip(icon = Icons.Default.Star, value = stats.reviewsThisWeek.toString(), label = "рецензий", modifier = Modifier.weight(1f))
+            StatChip(icon = Icons.Default.Favorite, value = stats.ratingsThisWeek.toString(), label = "оценок", modifier = Modifier.weight(1f))
+            StatChip(icon = Icons.Default.ChatBubbleOutline, value = stats.commentsThisWeek.toString(), label = "комментариев", modifier = Modifier.weight(1f))
         }
     }
 }

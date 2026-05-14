@@ -52,8 +52,21 @@ class ReviewViewModel @Inject constructor(
     private val _state = MutableStateFlow(ReviewUiState())
     val state: StateFlow<ReviewUiState> = _state.asStateFlow()
 
+    // Кэш: trackId для которого уже загружены данные
+    private var loadedTrackId: String? = null
+    // Флаг: идёт ли загрузка прямо сейчас (защита от параллельных вызовов)
+    private var isLoadingNow = false
+
     fun loadForTrack(audiusTrackId: String) {
+        // Если данные уже загружены для этого трека — не перезагружаем
+        if (loadedTrackId == audiusTrackId && !_state.value.isLoading && _state.value.error == null) {
+            return
+        }
+        // Защита от параллельных вызовов
+        if (isLoadingNow && loadedTrackId == audiusTrackId) return
+
         val token = sessionManager.getAccessToken() ?: return
+        isLoadingNow = true
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             val existing = authRepository.getMyTrackRating(token, audiusTrackId)
@@ -100,7 +113,17 @@ class ReviewViewModel @Inject constructor(
                 userAvatarUrl = profile?.avatarUrl,
                 currentUserId = sessionManager.getUserId()
             )
+            // Запоминаем для какого трека загружены данные
+            loadedTrackId = audiusTrackId
+            isLoadingNow = false
         }
+    }
+
+    /** Принудительно перезагружает данные (например после отправки комментария) */
+    fun invalidateAndReload(audiusTrackId: String) {
+        loadedTrackId = null
+        isLoadingNow = false
+        loadForTrack(audiusTrackId)
     }
 
     fun setScore(criterion: ScoreCriterion, value: Int) {
@@ -149,13 +172,24 @@ class ReviewViewModel @Inject constructor(
                 )
             ).onSuccess { saved ->
                 val newAverage = authRepository.getTrackAverageRating(token, audiusTrackId)
+                // Оптимистично обновляем список рецензий — добавляем/заменяем свою
+                val updatedReviews = _state.value.reviews.toMutableList()
+                val existingIdx = updatedReviews.indexOfFirst { it.userId == sessionManager.getUserId() }
+                if (existingIdx >= 0) {
+                    updatedReviews[existingIdx] = saved
+                } else {
+                    updatedReviews.add(0, saved)
+                }
                 _state.value = _state.value.copy(
                     isSaving = false,
                     savedSuccess = true,
                     existingRating = saved,
                     averageRating = newAverage,
+                    reviews = updatedReviews.sortedByDescending { it.reputation },
                     review = "" // очищаем поле после сохранения
                 )
+                // Инвалидируем кэш чтобы при следующем открытии данные обновились с сервера
+                loadedTrackId = null
             }.onFailure { e ->
                 _state.value = _state.value.copy(isSaving = false, error = e.message)
             }
@@ -190,6 +224,8 @@ class ReviewViewModel @Inject constructor(
                     commentText = "",
                     comments = listOf(newComment) + _state.value.comments
                 )
+                // Инвалидируем кэш чтобы при следующем открытии данные обновились
+                loadedTrackId = null
             }.onFailure { e ->
                 _state.value = _state.value.copy(isSaving = false, error = e.message)
             }
@@ -254,6 +290,37 @@ class ReviewViewModel @Inject constructor(
 
     fun clearSuccess() {
         _state.value = _state.value.copy(savedSuccess = false)
+    }
+
+    fun submitReport(
+        targetType: String,
+        targetId: String,
+        reason: String,
+        targetContent: String? = null,
+        targetUserId: String? = null,
+        targetUsername: String? = null,
+        trackTitle: String? = null,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        val token = sessionManager.getAccessToken() ?: return
+        val reporterId = sessionManager.getUserId() ?: return
+        viewModelScope.launch {
+            authRepository.submitReport(
+                token,
+                com.example.lumisound.data.remote.SupabaseService.ReportInsert(
+                    reporterId = reporterId,
+                    targetType = targetType,
+                    targetId = targetId,
+                    reason = reason,
+                    targetContent = targetContent,
+                    targetUserId = targetUserId,
+                    targetUsername = targetUsername,
+                    trackTitle = trackTitle
+                )
+            ).onSuccess { onSuccess() }
+             .onFailure { onError(it.message ?: "Ошибка") }
+        }
     }
 }
 

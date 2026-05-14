@@ -53,6 +53,18 @@ class SessionManager @Inject constructor(
         prefs.edit().clear().apply()
     }
 
+    /** Проверяет первый запуск после установки и очищает токены если нужно */
+    fun clearIfFreshInstall() {
+        val installTime = context.packageManager
+            .getPackageInfo(context.packageName, 0).firstInstallTime
+        val lastClearTime = prefs.getLong("last_clear_time", 0L)
+        // Если приложение установлено позже последней очистки — это свежая установка
+        if (installTime > lastClearTime) {
+            prefs.edit().clear().apply()
+            prefs.edit().putLong("last_clear_time", System.currentTimeMillis()).apply()
+        }
+    }
+
     // ── Настройки приложения ──────────────────────────────────────────────
 
     /** Тема: "dark" | "light" | "system" */

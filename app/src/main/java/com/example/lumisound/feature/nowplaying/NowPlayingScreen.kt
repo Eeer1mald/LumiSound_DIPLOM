@@ -194,44 +194,77 @@ fun NowPlayingScreen(
                         spotColor = Color.Black.copy(alpha = 0.6f)
                     )
             ) {
-                if (track.hdImageUrl != null && track.hdImageUrl.isNotEmpty()) {
+                val currentTrack by viewModel.playerStateHolder.currentTrack.collectAsState()
+                val displayTrack = currentTrack ?: track
+
+                var showHd by remember(displayTrack.id) { mutableStateOf(false) }
+
+                LaunchedEffect(displayTrack.id, displayTrack.hdImageUrl) {
+                    showHd = false
+                    val hdUrl = displayTrack.hdImageUrl
+                    android.util.Log.d("NowPlayingCover", "=== Track: ${displayTrack.name}")
+                    android.util.Log.d("NowPlayingCover", "=== imageUrl: ${displayTrack.imageUrl}")
+                    android.util.Log.d("NowPlayingCover", "=== hdImageUrl: $hdUrl")
+                    if (!hdUrl.isNullOrEmpty()) {
+                        try {
+                            android.util.Log.d("NowPlayingCover", "=== Starting HD load...")
+                            val loader = coil.Coil.imageLoader(context)
+                            val req = coil.request.ImageRequest.Builder(context)
+                                .data(hdUrl)
+                                .memoryCacheKey(hdUrl)
+                                .diskCacheKey(hdUrl)
+                                .build()
+                            val result = loader.execute(req)
+                            android.util.Log.d("NowPlayingCover", "=== Result: ${result::class.simpleName}")
+                            if (result is coil.request.SuccessResult) {
+                                showHd = true
+                                android.util.Log.d("NowPlayingCover", "=== showHd = TRUE!")
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("NowPlayingCover", "=== Error: ${e.message}")
+                        }
+                    } else {
+                        android.util.Log.d("NowPlayingCover", "=== hdUrl is null/empty!")
+                    }
+                }
+
+                // Слой 1: LQ — показывается мгновенно
+                val lqUrl = displayTrack.imageUrl
+                if (!lqUrl.isNullOrEmpty()) {
                     AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(track.hdImageUrl)
-                            .crossfade(false) // Отключено для лучшей производительности
+                        model = ImageRequest.Builder(context)
+                            .data(lqUrl)
+                            .crossfade(false)
+                            .memoryCacheKey(lqUrl)
                             .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
-                } else if (track.imageUrl != null && track.imageUrl.isNotEmpty()) {
+                }
+                // Слой 2: HD — появляется поверх когда загрузится
+                val hdUrl = displayTrack.hdImageUrl
+                if (!hdUrl.isNullOrEmpty() && showHd) {
                     AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(track.imageUrl)
-                            .crossfade(false) // Отключено для лучшей производительности
+                        model = ImageRequest.Builder(context)
+                            .data(hdUrl)
+                            .crossfade(400)
+                            .memoryCacheKey(hdUrl)
                             .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
-                } else {
+                }
+                if (lqUrl.isNullOrEmpty() && hdUrl.isNullOrEmpty()) {
                     val placeholderGradient = remember {
-                        Brush.linearGradient(
-                            colors = listOf(Color(0xFF1A1B2E), Color(0xFF16182A))
-                        )
+                        Brush.linearGradient(colors = listOf(Color(0xFF1A1B2E), Color(0xFF16182A)))
                     }
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(brush = placeholderGradient),
+                        modifier = Modifier.fillMaxSize().background(brush = placeholderGradient),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = null,
-                            tint = GradientStart.copy(alpha = 0.4f),
-                            modifier = Modifier.size(64.dp)
-                        )
+                        Icon(Icons.Default.MusicNote, null, tint = GradientStart.copy(alpha = 0.4f), modifier = Modifier.size(64.dp))
                     }
                 }
                 val overlayGradient = remember {

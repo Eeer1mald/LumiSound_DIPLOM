@@ -9,6 +9,8 @@ import com.example.lumisound.data.repository.MusicRepository
 import com.example.lumisound.data.local.SessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +26,8 @@ class PlayerViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val musicRepository: MusicRepository,
     private val sessionManager: SessionManager,
-    val audiusApi: com.example.lumisound.data.remote.AudiusApiService
+    val audiusApi: com.example.lumisound.data.remote.AudiusApiService,
+    private val diskCache: com.example.lumisound.data.cache.DiskCache
 ) : ViewModel() {
     
     private val _currentTrack = MutableStateFlow<Track?>(null)
@@ -45,8 +48,8 @@ class PlayerViewModel @Inject constructor(
     /** Показывать плавающие комментарии — читается из PlayerStateHolder */
     val showFloatingComments: Boolean get() = playerStateHolder.showFloatingComments
 
-    /** Есть ли предыдущий трек */
-    val hasPrevious: Boolean get() = playerStateHolder.hasPrevious
+    /** Есть ли предыдущий трек (в плейлисте или в истории) */
+    val hasPrevious: Boolean get() = playerStateHolder.hasPrevious || playerStateHolder.history.value.isNotEmpty()
     
     private var positionUpdateJob: Job? = null
     private var trackPlayTrackingJob: Job? = null
@@ -60,8 +63,10 @@ class PlayerViewModel @Inject constructor(
             playerStateHolder.currentTrack.collect { track ->
                 if (track != null && _currentTrack.value?.id != track.id) {
                     _currentTrack.value = track
-                    // Загружаем среднюю оценку для нового трека
                     loadAvgScore(track.id)
+                    // Сохраняем последний трек на диск с привязкой к userId
+                    val userId = sessionManager.getUserId()
+                    if (userId != null) diskCache.saveLastTrack(track, userId)
                 }
             }
         }
@@ -81,28 +86,55 @@ class PlayerViewModel @Inject constructor(
                 mediaItem: androidx.media3.common.MediaItem?,
                 reason: Int
             ) {
+                // Игнорируем переходы вызванные изменением плейлиста (appendToQueue и т.п.)
+                // Реагируем только на реальные переключения треков пользователем или авто
+                if (reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
+                    return
+                }
+
                 // Если автопереход (не ручной) и autoplay выключен — останавливаем
                 if (reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_AUTO
                     && !playerStateHolder.autoplayEnabled) {
                     audioPlayerService.pause()
                     return
                 }
-                // ExoPlayer перешёл к следующему треку (авто или вручную)
+
+                val exoUrl = mediaItem?.localConfiguration?.uri?.toString()
                 val newIdx = audioPlayerService.getCurrentMediaIndex()
                 val playlist = playerStateHolder.playlist.value
-                val newTrack = playlist.getOrNull(newIdx) ?: return
-                if (_currentTrack.value?.id != newTrack.id) {
-                    playerStateHolder.setPlaylist(playlist, newIdx)
-                    _currentTrack.value = newTrack
-                    playerStateHolder.setCurrentTrack(newTrack)
+
+                // Определяем реальный трек по URL аудио — источник истины
+                val trackByUrl = if (exoUrl != null) {
+                    playlist.firstOrNull { it.previewUrl == exoUrl }
+                } else null
+
+                val trackByIdx = playlist.getOrNull(newIdx)
+
+                // Приоритет: трек найденный по URL аудио (аудио = источник истины)
+                // Если по URL не нашли — берём по индексу
+                val actualTrack = trackByUrl ?: trackByIdx ?: return
+
+                // Если нашли по URL, но индекс не совпадает — синхронизируем плейлист
+                val actualIdx = if (trackByUrl != null) {
+                    playlist.indexOf(trackByUrl).takeIf { it >= 0 } ?: newIdx
+                } else newIdx
+
+                if (_currentTrack.value?.id != actualTrack.id) {
+                    playerStateHolder.setPlaylist(playlist, actualIdx)
+                    _currentTrack.value = actualTrack
+                    playerStateHolder.setCurrentTrack(actualTrack)
                     _currentPosition.value = 0L
                     _duration.value = 0L
-                    loadAvgScore(newTrack.id)
-                    audioPlayerService.updateMediaMetadata(newTrack.name, newTrack.artist, newTrack.imageUrl ?: newTrack.hdImageUrl)
+                    loadAvgScore(actualTrack.id)
+                    fetchAndUpdateHdCover(actualTrack)
+                    audioPlayerService.updateMediaMetadata(
+                        actualTrack.name, actualTrack.artist,
+                        actualTrack.imageUrl ?: actualTrack.hdImageUrl
+                    )
                     hasTrackedCurrentTrack = false
                     lastTrackedTrackId = null
                     stopTrackPlayTracking()
-                    startTrackPlayTracking(newTrack)
+                    startTrackPlayTracking(actualTrack)
                 }
             }
 
@@ -132,6 +164,9 @@ class PlayerViewModel @Inject constructor(
     }
     
     fun playTrack(track: Track) {
+        // Сохраняем текущий трек в историю перед переключением
+        _currentTrack.value?.let { playerStateHolder.pushHistory(it) }
+
         hasTrackedCurrentTrack = false
         lastTrackedTrackId = null
         stopTrackPlayTracking()
@@ -139,35 +174,33 @@ class PlayerViewModel @Inject constructor(
         _currentTrack.value = track
         _currentPosition.value = 0L
         _duration.value = 0L
+
+        // Запрашиваем HD обложку в фоне если её нет или она совпадает с LQ
+        fetchAndUpdateHdCover(track)
         playerStateHolder.setCurrentTrack(track)
+        // Обновляем плейлист — трек становится единственным элементом,
+        // чтобы ExoPlayer и PlayerStateHolder были синхронизированы.
+        // autoExtendQueueIfNeeded добавит похожие треки в фоне.
+        playerStateHolder.setPlaylist(listOf(track), 0)
         loadAvgScore(track.id)
-        // Обновляем метаданные для уведомления и запускаем сервис
+        preloadTrackReviewData(track.id)
         audioPlayerService.startMediaService()
         audioPlayerService.updateMediaMetadata(track.name, track.artist, track.imageUrl ?: track.hdImageUrl)
         track.previewUrl?.let { url ->
-            // Если трек уже в очереди ExoPlayer — просто переходим к нему
-            val playlist = playerStateHolder.playlist.value
-            val idx = playlist.indexOfFirst { it.id == track.id }
-            if (idx >= 0 && audioPlayerService.getQueueSize() == playlist.size) {
-                // Очередь уже установлена — seekTo нужному индексу
-                val player = audioPlayerService.getPlayer()
-                if (player != null && player.currentMediaItemIndex != idx) {
-                    player.seekTo(idx, 0L)
-                    player.play()
-                } else {
-                    audioPlayerService.resume()
-                }
-            } else {
-                // Одиночный трек — играем напрямую
-                audioPlayerService.play(url)
-            }
+            // Всегда играем напрямую через URL — не ищем в старом плейлисте ExoPlayer,
+            // чтобы гарантировать что аудио соответствует отображаемому треку.
+            audioPlayerService.play(url)
             _isPlaying.value = true
             startPositionUpdates()
             startTrackPlayTracking(track)
+            autoExtendQueueIfNeeded()
         }
     }
 
     fun playPlaylist(tracks: List<Track>, startIndex: Int = 0) {
+        // Сохраняем текущий трек в историю
+        _currentTrack.value?.let { playerStateHolder.pushHistory(it) }
+
         playerStateHolder.setPlaylist(tracks, startIndex)
         val track = tracks.getOrNull(startIndex) ?: return
 
@@ -180,22 +213,22 @@ class PlayerViewModel @Inject constructor(
         _duration.value = 0L
         playerStateHolder.setCurrentTrack(track)
         loadAvgScore(track.id)
-        // Обновляем метаданные для уведомления и запускаем сервис
+        // Предзагружаем данные для экрана рецензий в фоне
+        preloadTrackReviewData(track.id)
         audioPlayerService.startMediaService()
         audioPlayerService.updateMediaMetadata(track.name, track.artist, track.imageUrl ?: track.hdImageUrl)
 
-        // Устанавливаем всю очередь в ExoPlayer — он предзагрузит следующие треки
         val urls = tracks.mapNotNull { it.previewUrl }
         if (urls.size == tracks.size) {
-            // Все треки имеют URL — используем нативный плейлист
             audioPlayerService.setQueue(urls, startIndex)
         } else {
-            // Некоторые треки без URL — играем только текущий
             track.previewUrl?.let { audioPlayerService.play(it) }
         }
         _isPlaying.value = true
         startPositionUpdates()
         startTrackPlayTracking(track)
+        // Автодополняем очередь если треков мало
+        autoExtendQueueIfNeeded()
     }
     
     fun nextTrack() {
@@ -203,21 +236,16 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun doNextTrack() {
+        // Сохраняем текущий трек в историю
+        _currentTrack.value?.let { playerStateHolder.pushHistory(it) }
+
         // Сначала пробуем нативный ExoPlayer seek — мгновенно
         if (audioPlayerService.seekToNext()) {
-            val newIdx = audioPlayerService.getCurrentMediaIndex()
-            val playlist = playerStateHolder.playlist.value
-            val nextTrack = playlist.getOrNull(newIdx)
-            if (nextTrack != null) {
-                playerStateHolder.setPlaylist(playlist, newIdx)
-                _currentTrack.value = nextTrack
-                playerStateHolder.setCurrentTrack(nextTrack)
-                loadAvgScore(nextTrack.id)
-                hasTrackedCurrentTrack = false
-                lastTrackedTrackId = null
-                stopTrackPlayTracking()
-                startTrackPlayTracking(nextTrack)
-            }
+            // Обновляем только индекс — currentTrack обновит onMediaItemTransition
+            // когда ExoPlayer реально переключится и сообщит новый URL
+            val currentIdx = playerStateHolder.currentIndex.value
+            playerStateHolder.setIndexOnly(currentIdx + 1)
+            autoExtendQueueIfNeeded()
             return
         }
 
@@ -228,44 +256,138 @@ class PlayerViewModel @Inject constructor(
                 ?.filter { it.id != current.id && !it.previewUrl.isNullOrBlank() }
                 ?.shuffled()
             if (!similar.isNullOrEmpty()) {
-                playPlaylist(similar, 0)
+                // Добавляем в конец текущего плейлиста вместо замены
+                val currentPlaylist = playerStateHolder.playlist.value.toMutableList()
+                val newTracks = similar.filter { n -> currentPlaylist.none { it.id == n.id } }
+                if (newTracks.isNotEmpty()) {
+                    currentPlaylist.addAll(newTracks)
+                    val newIdx = playerStateHolder.currentIndex.value + 1
+                    if (currentPlaylist.isEmpty()) return@launch
+                    playerStateHolder.setPlaylist(currentPlaylist, newIdx.coerceIn(0, currentPlaylist.size - 1))
+                    val nextTrack = currentPlaylist.getOrNull(newIdx)
+                    if (nextTrack != null) {
+                        _currentTrack.value = nextTrack
+                        playerStateHolder.setCurrentTrack(nextTrack)
+                        nextTrack.previewUrl?.let { audioPlayerService.play(it) }
+                        _isPlaying.value = true
+                        startPositionUpdates()
+                        loadAvgScore(nextTrack.id)
+                        hasTrackedCurrentTrack = false
+                        lastTrackedTrackId = null
+                        stopTrackPlayTracking()
+                        startTrackPlayTracking(nextTrack)
+                    }
+                }
             } else {
                 val trending = musicRepository.getDiscoverFeed(page = 0, pageSize = 10).getOrNull()
                     ?.filter { it.id != current.id && !it.previewUrl.isNullOrBlank() }
                     ?.shuffled()
                 if (!trending.isNullOrEmpty()) {
-                    playPlaylist(trending, 0)
+                    val currentPlaylist = playerStateHolder.playlist.value.toMutableList()
+                    val newTracks = trending.filter { n -> currentPlaylist.none { it.id == n.id } }
+                    if (newTracks.isNotEmpty()) {
+                        currentPlaylist.addAll(newTracks)
+                        val newIdx = playerStateHolder.currentIndex.value + 1
+                        if (currentPlaylist.isEmpty()) return@launch
+                        playerStateHolder.setPlaylist(currentPlaylist, newIdx.coerceIn(0, currentPlaylist.size - 1))
+                        val nextTrack = currentPlaylist.getOrNull(newIdx)
+                        if (nextTrack != null) {
+                            _currentTrack.value = nextTrack
+                            playerStateHolder.setCurrentTrack(nextTrack)
+                            nextTrack.previewUrl?.let { audioPlayerService.play(it) }
+                            _isPlaying.value = true
+                            startPositionUpdates()
+                            loadAvgScore(nextTrack.id)
+                            hasTrackedCurrentTrack = false
+                            lastTrackedTrackId = null
+                            stopTrackPlayTracking()
+                            startTrackPlayTracking(nextTrack)
+                        }
+                    }
                 }
             }
         }
     }
 
     fun previousTrack() {
-        // Нативный ExoPlayer seek — мгновенно
-        if (audioPlayerService.seekToPrevious()) {
-            val newIdx = audioPlayerService.getCurrentMediaIndex()
-            val playlist = playerStateHolder.playlist.value
-            val prevTrack = playlist.getOrNull(newIdx)
-            if (prevTrack != null) {
-                playerStateHolder.setPlaylist(playlist, newIdx)
-                _currentTrack.value = prevTrack
-                playerStateHolder.setCurrentTrack(prevTrack)
-                loadAvgScore(prevTrack.id)
-                hasTrackedCurrentTrack = false
-                lastTrackedTrackId = null
-                stopTrackPlayTracking()
-                startTrackPlayTracking(prevTrack)
+        val playlist = playerStateHolder.playlist.value
+        val currentIdx = playerStateHolder.currentIndex.value
+
+        // Если есть предыдущий в плейлисте — используем его
+        if (currentIdx > 0) {
+            if (audioPlayerService.seekToPrevious()) {
+                // Обновляем только индекс — currentTrack обновит onMediaItemTransition
+                playerStateHolder.setIndexOnly(currentIdx - 1)
+                return
             }
         }
-        // Если нет предыдущего — ничего не делаем
+
+        // Fallback — берём из истории воспроизведения
+        val historyTrack = playerStateHolder.popHistory()
+        if (historyTrack != null && !historyTrack.previewUrl.isNullOrBlank()) {
+            hasTrackedCurrentTrack = false
+            lastTrackedTrackId = null
+            stopTrackPlayTracking()
+            _currentTrack.value = historyTrack
+            _currentPosition.value = 0L
+            _duration.value = 0L
+            playerStateHolder.setCurrentTrack(historyTrack)
+            loadAvgScore(historyTrack.id)
+            audioPlayerService.startMediaService()
+            audioPlayerService.updateMediaMetadata(historyTrack.name, historyTrack.artist, historyTrack.imageUrl ?: historyTrack.hdImageUrl)
+            val previewUrl = historyTrack.previewUrl ?: return
+            audioPlayerService.play(previewUrl)
+            _isPlaying.value = true
+            startPositionUpdates()
+            startTrackPlayTracking(historyTrack)
+        }
+    }
+
+    /**
+     * Автоматически дополняет очередь похожими треками когда осталось мало.
+     * Вызывается после каждого переключения трека.
+     */
+    private var autoExtendJob: Job? = null
+    private fun autoExtendQueueIfNeeded() {
+        val playlist = playerStateHolder.playlist.value
+        val currentIdx = playerStateHolder.currentIndex.value
+        val remaining = playlist.size - currentIdx - 1
+        // Дополняем если осталось меньше 3 треков впереди
+        if (remaining >= 3) return
+        autoExtendJob?.cancel()
+        autoExtendJob = viewModelScope.launch {
+            val current = _currentTrack.value ?: return@launch
+            val similar = musicRepository.searchTracks(current.artist, limit = 10).getOrNull()
+                ?.filter { t -> !t.previewUrl.isNullOrBlank() && playlist.none { it.id == t.id } }
+                ?.shuffled()
+                ?.take(5)
+            if (!similar.isNullOrEmpty()) {
+                // appendToPlaylist НЕ меняет текущий трек и индекс
+                playerStateHolder.appendToPlaylist(similar)
+                // Добавляем URL в ExoPlayer очередь
+                val newUrls = similar.mapNotNull { it.previewUrl }
+                audioPlayerService.appendToQueue(newUrls)
+                Log.d("PlayerViewModel", "Автодополнение: добавлено ${similar.size} треков")
+            }
+        }
     }
     
     fun togglePlayPause() {
         if (_isPlaying.value) {
             audioPlayerService.pause()
             _isPlaying.value = false
-            // НЕ останавливаем positionUpdateJob — пусть продолжает читать позицию
         } else {
+            // Если ExoPlayer не готов (нет медиа-элементов) — нужно загрузить трек
+            val player = audioPlayerService.getPlayer()
+            val hasMedia = (player?.mediaItemCount ?: 0) > 0
+            if (!hasMedia) {
+                // Трек есть в PlayerStateHolder но не загружен в ExoPlayer — загружаем
+                val track = _currentTrack.value ?: playerStateHolder.currentTrack.value
+                if (track != null && !track.previewUrl.isNullOrBlank()) {
+                    playTrack(track)
+                    return
+                }
+            }
             audioPlayerService.resume()
             _isPlaying.value = true
             startPositionUpdates()
@@ -288,11 +410,57 @@ class PlayerViewModel @Inject constructor(
         _currentPosition.value = 0L
     }
 
-    private fun loadAvgScore(trackId: String) {
-        val token = sessionManager.getAccessToken() ?: run { _avgScore.value = null; return }
+    /** Загружает HD обложку через Audius API и обновляет currentTrack если нашёл лучше */
+    private fun fetchAndUpdateHdCover(track: Track) {
+        // Если уже есть нормальный HD (не совпадает с LQ) — ничего не делаем
+        if (!track.hdImageUrl.isNullOrEmpty() && track.hdImageUrl != track.imageUrl) return
+        viewModelScope.launch {
+            try {
+                val audiusTrack = audiusApi.getTrackById(track.id).getOrNull() ?: return@launch
+                val hd1000 = audiusApi.getArtworkUrlExact(audiusTrack.artwork, "1000x1000")
+                val hd480  = audiusApi.getArtworkUrlExact(audiusTrack.artwork, "480x480")
+                val newHd  = hd1000 ?: hd480 ?: return@launch
+                // Обновляем только если нашли что-то лучше текущего
+                if (newHd == track.imageUrl) return@launch
+                val updatedTrack = track.copy(hdImageUrl = newHd)
+                // Обновляем в PlayerStateHolder — PlayerScreen подхватит через collectAsState
+                playerStateHolder.setCurrentTrack(updatedTrack)
+                _currentTrack.value = updatedTrack
+                // Обновляем в плейлисте тоже
+                val playlist = playerStateHolder.playlist.value.toMutableList()
+                val idx = playlist.indexOfFirst { it.id == track.id }
+                if (idx >= 0) {
+                    playlist[idx] = updatedTrack
+                    playerStateHolder.setPlaylist(playlist, playerStateHolder.currentIndex.value)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun loadAvgScore(trackId: String) {        val token = sessionManager.getAccessToken() ?: run { _avgScore.value = null; return }
         viewModelScope.launch {
             val avg = authRepository.getTrackAverageRating(token, trackId)
             _avgScore.value = avg?.avgOverall?.toFloat()
+        }
+    }
+
+    /** Предзагружает данные рецензий/комментариев трека в фоне пока пользователь слушает */
+    private var preloadReviewJob: kotlinx.coroutines.Job? = null
+    fun preloadTrackReviewData(trackId: String) {
+        preloadReviewJob?.cancel()
+        val token = sessionManager.getAccessToken() ?: return
+        preloadReviewJob = viewModelScope.launch {
+            // Небольшая задержка — не мешаем основному воспроизведению
+            kotlinx.coroutines.delay(2000)
+            // Предзагружаем параллельно — данные попадут в кэш AuthRepository
+            kotlinx.coroutines.coroutineScope {
+                val commentsJob = async { authRepository.getTrackComments(token, trackId) }
+                val reviewsJob = async { authRepository.getTrackReviews(token, trackId) }
+                val avgJob = async { authRepository.getTrackAverageRating(token, trackId) }
+                commentsJob.await()
+                reviewsJob.await()
+                avgJob.await()
+            }
         }
     }
 
@@ -426,5 +594,6 @@ class PlayerViewModel @Inject constructor(
         super.onCleared()
         stopPositionUpdates()
         stopTrackPlayTracking()
+        autoExtendJob?.cancel()
     }
 }

@@ -2,6 +2,7 @@ package com.example.lumisound.feature.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.lumisound.data.cache.AppDataCache
 import com.example.lumisound.data.local.SessionManager
 import com.example.lumisound.data.remote.SupabaseService
 import com.example.lumisound.data.repository.AuthRepository
@@ -9,6 +10,7 @@ import com.example.lumisound.feature.playlist.PlaylistEvent
 import com.example.lumisound.feature.playlist.PlaylistEventBus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,12 +18,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class PlaylistTab { MY, RECOMMENDED, TOP }
+enum class PlaylistTab { MY, LIKED, RECOMMENDED, TOP }
 
 data class HomeStats(
+    val reviewsThisWeek: Int = 0,
     val ratingsThisWeek: Int = 0,
-    val totalRatings: Int = 0,
-    val totalComments: Int = 0
+    val commentsThisWeek: Int = 0
 )
 
 data class PlaylistUiState(
@@ -41,6 +43,7 @@ data class PlaylistUiState(
 ) {
     val playlists: List<SupabaseService.PlaylistResponse> get() = when (selectedTab) {
         PlaylistTab.MY -> myPlaylists
+        PlaylistTab.LIKED -> (topPlaylists + recommendedPlaylists).filter { likedPlaylistIds.contains(it.id) }.distinctBy { it.id }
         PlaylistTab.RECOMMENDED -> recommendedPlaylists
         PlaylistTab.TOP -> topPlaylists
     }
@@ -50,15 +53,17 @@ data class PlaylistUiState(
 class PlaylistViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val sessionManager: SessionManager,
-    private val playlistEventBus: PlaylistEventBus
+    private val playlistEventBus: PlaylistEventBus,
+    private val cache: AppDataCache
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PlaylistUiState())
     val state: StateFlow<PlaylistUiState> = _state.asStateFlow()
 
     init {
+        // Сразу применяем кэш если он готов — экран отображается мгновенно
+        applyCache()
         loadAll()
-        // Слушаем события создания плейлиста из других экранов
         viewModelScope.launch {
             playlistEventBus.events.collect { event ->
                 when (event) {
@@ -74,6 +79,35 @@ class PlaylistViewModel @Inject constructor(
                 if (token != null) loadAll()
             }
         }
+    }
+
+    /** Мгновенно заполняет UI из кэша AppPreloadViewModel */
+    private fun applyCache() {
+        val c = cache
+        if (!c.isReady.value) return
+        val weekAgo = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
+        fun isThisWeek(createdAt: String?): Boolean = try {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+            val date = sdf.parse(createdAt?.take(19) ?: "")
+            (date?.time ?: 0L) > weekAgo
+        } catch (e: Exception) { false }
+        val ratings = c.myRatings.value
+        val comments = c.myComments.value
+        _state.value = _state.value.copy(
+            myPlaylists = c.myPlaylists.value,
+            recommendedPlaylists = c.recommendedPlaylists.value,
+            topPlaylists = c.topPlaylists.value,
+            recentTracks = c.recentTracks.value,
+            topTracks = c.topTracks.value,
+            likedPlaylistIds = c.likedPlaylistIds.value,
+            currentUserId = sessionManager.getUserId(),
+            stats = HomeStats(
+                reviewsThisWeek = ratings.count { it.review != null && it.review.isNotBlank() && isThisWeek(it.createdAt) },
+                ratingsThisWeek = ratings.count { isThisWeek(it.createdAt) },
+                commentsThisWeek = comments.count { isThisWeek(it.createdAt) }
+            ),
+            isLoading = false
+        )
     }
 
     fun loadAll() {
@@ -110,13 +144,18 @@ class PlaylistViewModel @Inject constructor(
             val enrichedMy = enrichWithTrackCovers(token, myPlaylists)
 
             val weekAgo = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
-            val ratingsThisWeek = ratings.count { r ->
-                try {
+
+            fun isThisWeek(createdAt: String?): Boolean {
+                return try {
                     val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
-                    val date = sdf.parse(r.createdAt?.take(19) ?: "")
+                    val date = sdf.parse(createdAt?.take(19) ?: "")
                     (date?.time ?: 0L) > weekAgo
                 } catch (e: Exception) { false }
             }
+
+            val reviewsThisWeek = ratings.count { it.review != null && it.review.isNotBlank() && isThisWeek(it.createdAt) }
+            val ratingsThisWeek = ratings.count { isThisWeek(it.createdAt) }
+            val commentsThisWeek = comments.count { isThisWeek(it.createdAt) }
 
             _state.value = _state.value.copy(
                 myPlaylists = enrichedMy,
@@ -127,28 +166,43 @@ class PlaylistViewModel @Inject constructor(
                 currentUserId = sessionManager.getUserId(),
                 likedPlaylistIds = likedIds,
                 stats = HomeStats(
+                    reviewsThisWeek = reviewsThisWeek,
                     ratingsThisWeek = ratingsThisWeek,
-                    totalRatings = ratings.size,
-                    totalComments = comments.size
+                    commentsThisWeek = commentsThisWeek
                 ),
                 isLoading = false
             )
         }
     }
 
-    /** Обогащает плейлисты без coverUrl обложкой первого трека */
+    /** Обогащает плейлисты без coverUrl обложкой первого трека.
+     *  Использует параллельные запросы вместо последовательных (N+1 → параллельно). */
     private suspend fun enrichWithTrackCovers(
         token: String,
         playlists: List<SupabaseService.PlaylistResponse>
     ): List<SupabaseService.PlaylistResponse> {
-        return playlists.map { playlist ->
-            if (playlist.coverUrl.isNullOrEmpty() && playlist.trackCount > 0) {
-                val tracks = authRepository.getPlaylistTracks(token, playlist.id)
-                val firstCover = tracks.firstOrNull { !it.trackCoverUrl.isNullOrEmpty() }?.trackCoverUrl
-                if (firstCover != null) playlist.copy(coverUrl = firstCover) else playlist
-            } else {
-                playlist
+        val needsEnrich = playlists.filter { it.coverUrl.isNullOrEmpty() && it.trackCount > 0 }
+        if (needsEnrich.isEmpty()) return playlists
+
+        // Загружаем треки для всех плейлистов без обложки параллельно
+        val coverMap = mutableMapOf<String, String?>()
+        coroutineScope {
+            val jobs = needsEnrich.map { playlist ->
+                async {
+                    val tracks = authRepository.getPlaylistTracks(token, playlist.id)
+                    val firstCover = tracks.firstOrNull { !it.trackCoverUrl.isNullOrEmpty() }?.trackCoverUrl
+                    playlist.id to firstCover
+                }
             }
+            jobs.forEach { job ->
+                val (id, cover) = job.await()
+                coverMap[id] = cover
+            }
+        }
+
+        return playlists.map { playlist ->
+            val cover = coverMap[playlist.id]
+            if (cover != null) playlist.copy(coverUrl = cover) else playlist
         }
     }
 

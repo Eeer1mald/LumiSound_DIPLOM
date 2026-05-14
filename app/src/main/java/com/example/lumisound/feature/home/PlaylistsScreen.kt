@@ -1,5 +1,6 @@
 ﻿package com.example.lumisound.feature.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
@@ -16,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Public
@@ -47,6 +50,12 @@ fun PlaylistsScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var selectedPlaylist by remember { mutableStateOf<SupabaseService.PlaylistResponse?>(null) }
 
+    // Системная кнопка "назад": закрываем плейлист если открыт, иначе закрываем экран
+    BackHandler {
+        if (selectedPlaylist != null) selectedPlaylist = null
+        else onClose()
+    }
+
     LaunchedEffect(state.savedSuccess) {
         if (state.savedSuccess) viewModel.clearSuccess()
     }
@@ -55,6 +64,7 @@ fun PlaylistsScreen(
         modifier = Modifier.fillMaxSize().background(LocalAppColors.current.background).statusBarsPadding()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
+            // ── Хедер ──────────────────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -67,46 +77,119 @@ fun PlaylistsScreen(
                 ) {
                     Icon(Icons.Default.ArrowBack, "Back", tint = LocalAppColors.current.onBackground, modifier = Modifier.size(18.dp))
                 }
-                Text("Мои плейлисты", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Box(
-                    modifier = Modifier.size(36.dp).background(GradientStart.copy(alpha = 0.15f), CircleShape)
-                        .border(1.dp, GradientStart.copy(alpha = 0.4f), CircleShape)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showCreateDialog = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Add, "Create", tint = GradientStart, modifier = Modifier.size(18.dp))
+                Text("Плейлисты", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                // Кнопка создать — только на вкладке Мои
+                if (state.selectedTab == PlaylistTab.MY) {
+                    Box(
+                        modifier = Modifier.size(36.dp).background(GradientStart.copy(alpha = 0.15f), CircleShape)
+                            .border(1.dp, GradientStart.copy(alpha = 0.4f), CircleShape)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showCreateDialog = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Add, "Create", tint = GradientStart, modifier = Modifier.size(18.dp))
+                    }
+                } else {
+                    Spacer(modifier = Modifier.size(36.dp))
+                }
+            }
+
+            // ── 4 вкладки ──────────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    PlaylistTab.MY to "Мои",
+                    PlaylistTab.LIKED to "Любимое",
+                    PlaylistTab.RECOMMENDED to "Для вас",
+                    PlaylistTab.TOP to "Топ"
+                ).forEach { (tab, label) ->
+                    val isActive = state.selectedTab == tab
+                    Box(
+                        modifier = Modifier.weight(1f).height(36.dp)
+                            .background(
+                                if (isActive) GradientStart.copy(alpha = 0.18f) else LocalAppColors.current.surface,
+                                RoundedCornerShape(10.dp)
+                            )
+                            .border(
+                                1.dp,
+                                if (isActive) GradientStart.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.07f),
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.selectTab(tab) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            label,
+                            color = if (isActive) GradientStart else LocalAppColors.current.secondary,
+                            fontSize = 12.sp,
+                            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    }
                 }
             }
 
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
 
+            // ── Контент вкладки ─────────────────────────────────────
+            val playlists = state.playlists
+            val isMyTab = state.selectedTab == PlaylistTab.MY
+
             if (state.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = GradientStart, modifier = Modifier.size(32.dp))
                 }
-            } else if (state.myPlaylists.isEmpty()) {
+            } else if (playlists.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("🎵", fontSize = 40.sp)
-                        Text("Нет плейлистов", color = LocalAppColors.current.onBackground.copy(alpha = 0.5f), fontSize = 16.sp)
-                        Text("Нажмите + чтобы создать первый", color = LocalAppColors.current.secondary, fontSize = 13.sp)
+                        Text(
+                            when (state.selectedTab) {
+                                PlaylistTab.MY -> "🎵"
+                                PlaylistTab.LIKED -> "❤️"
+                                PlaylistTab.RECOMMENDED -> "✨"
+                                PlaylistTab.TOP -> "🏆"
+                            },
+                            fontSize = 40.sp
+                        )
+                        Text(
+                            when (state.selectedTab) {
+                                PlaylistTab.MY -> "Нет плейлистов"
+                                PlaylistTab.LIKED -> "Нет лайкнутых плейлистов"
+                                PlaylistTab.RECOMMENDED -> "Нет рекомендаций"
+                                PlaylistTab.TOP -> "Нет топ плейлистов"
+                            },
+                            color = LocalAppColors.current.onBackground.copy(alpha = 0.5f), fontSize = 16.sp
+                        )
+                        if (isMyTab) {
+                            Text("Нажмите + чтобы создать первый", color = LocalAppColors.current.secondary, fontSize = 13.sp)
+                        }
                     }
                 }
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 140.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(state.myPlaylists, key = { it.id }) { playlist ->
-                        PlaylistGridCard(
-                            playlist = playlist,
-                            onDelete = { viewModel.deletePlaylist(playlist.id) },
-                            onToggleVisibility = { viewModel.toggleVisibility(playlist.id, playlist.isPublic) },
-                            onClick = { selectedPlaylist = playlist }
-                        )
+                    items(playlists, key = { it.id }) { playlist ->
+                        if (isMyTab) {
+                            PlaylistGridCard(
+                                playlist = playlist,
+                                onDelete = { viewModel.deletePlaylist(playlist.id) },
+                                onToggleVisibility = { viewModel.toggleVisibility(playlist.id, playlist.isPublic) },
+                                onClick = { selectedPlaylist = playlist }
+                            )
+                        } else {
+                            // Для вкладок Любимое/Для вас/Топ — карточка с лайком
+                            PlaylistGridCardPublic(
+                                playlist = playlist,
+                                isLiked = state.likedPlaylistIds.contains(playlist.id),
+                                onToggleLike = { viewModel.toggleLike(playlist.id) },
+                                onClick = { selectedPlaylist = playlist }
+                            )
+                        }
                     }
                 }
             }
@@ -137,6 +220,69 @@ fun PlaylistsScreen(
             },
             onDismiss = { showCreateDialog = false }
         )
+    }
+}
+
+@Composable
+fun PlaylistGridCardPublic(
+    playlist: SupabaseService.PlaylistResponse,
+    isLiked: Boolean = false,
+    onToggleLike: () -> Unit = {},
+    onClick: () -> Unit = {}
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .background(LocalAppColors.current.surface, RoundedCornerShape(14.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() }
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+                .background(Color.White.copy(alpha = 0.05f)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!playlist.coverUrl.isNullOrEmpty()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current).data(playlist.coverUrl).crossfade(false).build(),
+                    contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(
+                        androidx.compose.ui.graphics.Brush.linearGradient(listOf(GradientStart.copy(alpha = 0.3f), Color.Black.copy(alpha = 0.5f)))
+                    ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.MusicNote, null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(36.dp))
+                }
+            }
+            // Лайк
+            Box(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)
+                    .size(28.dp).background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onToggleLike() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    null,
+                    tint = if (isLiked) GradientStart else Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(playlist.name, color = LocalAppColors.current.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("${playlist.trackCount} ${trackWord(playlist.trackCount)}", color = LocalAppColors.current.secondary, fontSize = 11.sp)
+                if (playlist.likesCount > 0) {
+                    Text("·", color = LocalAppColors.current.secondary, fontSize = 11.sp)
+                    Icon(Icons.Default.Favorite, null, tint = GradientStart.copy(alpha = 0.7f), modifier = Modifier.size(10.dp))
+                    Text("${playlist.likesCount}", color = LocalAppColors.current.secondary, fontSize = 11.sp)
+                }
+            }
+        }
     }
 }
 

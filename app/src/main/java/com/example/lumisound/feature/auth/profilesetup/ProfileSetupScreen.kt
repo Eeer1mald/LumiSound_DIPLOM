@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -118,6 +119,7 @@ fun ProfileSetupScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .background(LocalAppColors.current.background)
+                .imePadding()
         ) {
             Column(
                 modifier = Modifier
@@ -233,12 +235,6 @@ fun ProfileSetupScreen(
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Заполните данные для завершения регистрации",
-                            color = LocalAppColors.current.secondary,
-                            fontSize = 14.sp
-                        )
                     }
                 }
                 
@@ -282,21 +278,6 @@ fun ProfileSetupScreen(
                             keyboardActions = androidx.compose.foundation.text.KeyboardActions.Default,
                             modifier = Modifier.fillMaxWidth(),
                             testTag = "profile_setup_bio"
-                        )
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        LabeledTextField(
-                            value = uiState.favoriteGenre,
-                            onValueChange = { viewModel.onFavoriteGenreChanged(it) },
-                            label = "Любимый жанр (необязательно)",
-                            placeholder = "Например: Рок, Поп, Джаз",
-                            isError = false,
-                            errorText = null,
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
-                            keyboardActions = androidx.compose.foundation.text.KeyboardActions.Default,
-                            modifier = Modifier.fillMaxWidth(),
-                            testTag = "profile_setup_genre"
                         )
                     }
                 }

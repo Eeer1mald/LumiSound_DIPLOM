@@ -3,6 +3,8 @@
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +52,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -242,6 +246,17 @@ fun ReviewsScreen(
                                         com.example.lumisound.navigation.MainDestination.PublicProfile()
                                             .createRoute(userId, rating.username ?: "Пользователь", rating.userAvatarUrl)
                                     )
+                                },
+                                onReport = { reason ->
+                                    viewModel.submitReport(
+                                        targetType = "review",
+                                        targetId = rating.id,
+                                        reason = reason,
+                                        targetContent = rating.review,
+                                        targetUserId = rating.userId,
+                                        targetUsername = rating.username,
+                                        trackTitle = track.name
+                                    )
                                 }
                             )
                         }
@@ -356,33 +371,8 @@ fun ReviewsScreen(
             }
         }
 
-        // ── Затемнение под sheet ───────────────────────────────────
-        if (showRatingSheet || showStatsSheet) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                        showRatingSheet = false
-                        showStatsSheet = false
-                    }
-            )
-        }
-
         // ── Bottom sheet с оценками ────────────────────────────────
-        androidx.compose.animation.AnimatedVisibility(
-            visible = showRatingSheet,
-            enter = androidx.compose.animation.slideInVertically(
-                animationSpec = androidx.compose.animation.core.spring(
-                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
-                    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
-                )
-            ) { it },
-            exit = androidx.compose.animation.slideOutVertically(
-                animationSpec = androidx.compose.animation.core.tween(200)
-            ) { it },
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-        ) {
+        if (showRatingSheet) {
             ReviewRatingSheet(
                 state = state, track = track, viewModel = viewModel,
                 onDismiss = { showRatingSheet = false }
@@ -390,19 +380,7 @@ fun ReviewsScreen(
         }
 
         // ── Bottom sheet просмотра оценок ──────────────────────────
-        androidx.compose.animation.AnimatedVisibility(
-            visible = showStatsSheet,
-            enter = androidx.compose.animation.slideInVertically(
-                animationSpec = androidx.compose.animation.core.spring(
-                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
-                    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
-                )
-            ) { it },
-            exit = androidx.compose.animation.slideOutVertically(
-                animationSpec = androidx.compose.animation.core.tween(200)
-            ) { it },
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-        ) {
+        if (showStatsSheet) {
             ReviewStatsSheet(
                 state = state,
                 onEditClick = { showStatsSheet = false; showRatingSheet = true },
@@ -419,14 +397,35 @@ private fun ReviewRatingSheet(
     viewModel: ReviewViewModel,
     onDismiss: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
-    ) {
+    var dragOffset by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() }
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .graphicsLayer { translationY = dragOffset.coerceAtLeast(0f) }
+                .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { if (dragOffset > 120f) onDismiss() else dragOffset = 0f },
+                        onDragCancel = { dragOffset = 0f },
+                        onVerticalDrag = { change, delta ->
+                            if (delta > 0 || dragOffset > 0f) {
+                                dragOffset = (dragOffset + delta).coerceAtLeast(0f)
+                                change.consume()
+                            }
+                        }
+                    )
+                }
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+        ) {
         Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
         Spacer(modifier = Modifier.height(16.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -490,7 +489,9 @@ private fun ReviewRatingSheet(
                 )
             }
         }
-    }
+        Spacer(modifier = Modifier.height(8.dp))
+        } // Column
+    } // Box
 }
 
 @Composable
@@ -507,19 +508,40 @@ private fun ReviewStatsSheet(
         ).takeIf { it.isNotEmpty() }?.average()
     }
     val avgScore = state.averageRating?.avgOverall
+    var dragOffset by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
 
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() }
+        )
     Column(
         modifier = Modifier
+            .align(Alignment.BottomCenter)
             .fillMaxWidth()
+            .graphicsLayer { translationY = dragOffset.coerceAtLeast(0f) }
             .background(Color(0xFF1C1C1C), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
             .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 16.dp)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragEnd = { if (dragOffset > 120f) onDismiss() else dragOffset = 0f },
+                    onDragCancel = { dragOffset = 0f },
+                    onVerticalDrag = { change, delta ->
+                        if (delta > 0 || dragOffset > 0f) {
+                            dragOffset = (dragOffset + delta).coerceAtLeast(0f)
+                            change.consume()
+                        }
+                    }
+                )
+            }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
     ) {
         Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp)).align(Alignment.CenterHorizontally))
         Spacer(modifier = Modifier.height(16.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Моя оценка", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text("Средняя оценка", color = LocalAppColors.current.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             myScore?.let {
                 Box(modifier = Modifier.background(brush = Brush.linearGradient(listOf(GradientStart, GradientEnd)), shape = RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
                     Text(String.format("%.1f", it) + " / 10", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
@@ -564,7 +586,9 @@ private fun ReviewStatsSheet(
                 Text(if (myScore != null) "Изменить оценку" else "Поставить оценку", color = GradientStart, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
-    }
+        Spacer(modifier = Modifier.height(8.dp))
+        } // Column
+    } // Box
 }
 
 @Composable
@@ -574,7 +598,8 @@ private fun ReviewCard(
     currentUserId: String? = null,
     isVoting: Boolean = false,
     onVote: (Int) -> Unit = {},
-    onProfileClick: ((String) -> Unit)? = null
+    onProfileClick: ((String) -> Unit)? = null,
+    onReport: ((reason: String) -> Unit)? = null
 ) {
     val dateStr = remember(rating.createdAt) {
         try {
@@ -587,12 +612,27 @@ private fun ReviewCard(
     val isOwn = currentUserId != null && rating.userId == currentUserId
     val displayName = rating.username?.takeIf { it.isNotBlank() } ?: "Пользователь"
     var showCriteria by remember { mutableStateOf(false) }
+    var showReportDialog by remember { mutableStateOf(false) }
+
+    if (showReportDialog && !isOwn) {
+        ReportDialog(
+            onDismiss = { showReportDialog = false },
+            onReport = { reason -> onReport?.invoke(reason) }
+        )
+    }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(LocalAppColors.current.surface.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
             .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
+            .then(
+                if (!isOwn && onReport != null)
+                    Modifier.pointerInput(Unit) {
+                        detectTapGestures(onLongPress = { showReportDialog = true })
+                    }
+                else Modifier
+            )
             .padding(14.dp)
     ) {
         // Хедер: аватар + имя + дата + оценка
@@ -623,7 +663,15 @@ private fun ReviewCard(
                     }
                 }
                 Column {
-                    Text(displayName, color = LocalAppColors.current.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        displayName,
+                        color = if (isOwn) GradientStart else LocalAppColors.current.secondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = if (!isOwn && onProfileClick != null && rating.userId != null)
+                            Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onProfileClick(rating.userId) }
+                        else Modifier
+                    )
                     Text(dateStr, color = LocalAppColors.current.secondary, fontSize = 11.sp)
                 }
             }

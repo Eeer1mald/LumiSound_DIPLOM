@@ -83,6 +83,7 @@ fun MiniPlayer(
     isSleepTimerActive: Boolean = false,
     onSleepTimerClick: (() -> Unit)? = null,
     animationProgress: Float = 0f,
+    extraOffsetY: Float = 0f,  // дополнительное смещение по Y в пикселях (для синхронизации с пальцем)
     onAnimationProgressChange: (Float) -> Unit = {},
     onDragStart: () -> Unit = {},
     onDragEnd: () -> Unit = {},
@@ -98,13 +99,13 @@ fun MiniPlayer(
 
     val alpha = (1f - animationProgress.coerceIn(0f, 1f)).coerceIn(0f, 1f)
 
-    val miniPlayerTotalHeightPx = with(density) { (72.dp + 16.dp).toPx() }
+    val miniPlayerTotalHeightPx = with(density) { 72.dp.toPx() }
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
     val miniPlayerTravelPx = with(density) {
         val bottomBarHeightPx = 56.dp.toPx()
         (screenHeightPx - miniPlayerTotalHeightPx - bottomBarHeightPx).coerceAtLeast(0f)
     }
-    val miniPlayerOffsetY = -(miniPlayerTravelPx * animationProgress.coerceIn(0f, 1f))
+    val miniPlayerOffsetY = -(miniPlayerTravelPx * animationProgress.coerceIn(0f, 1f)) + extraOffsetY
 
     // Локальный аккумулятор драга — не вызывает рекомпозицию
     var totalDrag by remember { mutableFloatStateOf(0f) }
@@ -221,12 +222,13 @@ fun MiniPlayer(
                                             currentOnNextTrack?.invoke()
                                             hSwipeAnim.snapTo(0f)
                                         }
-                                        (offset > threshold || velocity > flingThreshold) && currentHasPrevious -> {
+                                        (offset > threshold || velocity > flingThreshold) && currentHasPrevious && currentOnPreviousTrack != null && prevTrackInfo != null -> {
                                             hSwipeAnim.animateTo(
                                                 screenWidthPx,
                                                 SpringSpec(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
                                             )
-                                            currentOnPreviousTrack?.invoke()
+                                            val prevCallback = currentOnPreviousTrack
+                                            if (prevCallback != null) prevCallback()
                                             hSwipeAnim.snapTo(0f)
                                         }
                                         else -> {
@@ -248,7 +250,7 @@ fun MiniPlayer(
                                 velocityTracker.addPointerInputChange(change)
                                 val newOffset = hSwipeAnim.value + dragAmount
                                 val clamped = when {
-                                    newOffset > 0 && !currentHasPrevious -> (newOffset * 0.15f).coerceAtMost(20f)
+                                    newOffset > 0 && (!currentHasPrevious || prevTrackInfo == null) -> (newOffset * 0.15f).coerceAtMost(20f)
                                     newOffset < 0 && nextTrackInfo == null -> (newOffset * 0.15f).coerceAtLeast(-20f)
                                     else -> newOffset
                                 }
@@ -314,14 +316,15 @@ fun MiniPlayer(
             // Track info (center)
             Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxSize(),
-                verticalArrangement = Arrangement.Center
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
+                horizontalAlignment = Alignment.Start
             ) {
                 Text(
                     text = currentTrack.name,
                     color = LocalAppColors.current.onBackground,
-                    fontSize = 16.sp,
+                    fontSize = 14.sp,
+                    lineHeight = 16.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -329,7 +332,8 @@ fun MiniPlayer(
                 Text(
                     text = currentTrack.artist,
                     color = LocalAppColors.current.secondary,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

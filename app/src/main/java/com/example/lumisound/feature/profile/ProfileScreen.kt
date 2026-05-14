@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MusicNote
@@ -316,7 +317,7 @@ fun ProfileScreen(
                     modifier = Modifier.weight(1f)
                 )
                 StatBox(
-                    icon = Icons.Default.MusicNote,
+                    icon = Icons.Default.ChatBubbleOutline,
                     value = uiState.commentsCount.toString(),
                     label = "комментариев",
                     iconColor = GradientStart,

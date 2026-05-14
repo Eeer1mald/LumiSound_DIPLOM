@@ -28,7 +28,6 @@ sealed class ProfileSetupSideEffect {
 data class ProfileSetupUiState(
     val username: String = "",
     val bio: String = "",
-    val favoriteGenre: String = "",
     val avatarUri: Uri? = null,
     val usernameError: String? = null,
     val isSubmitting: Boolean = false
@@ -77,10 +76,6 @@ class ProfileSetupViewModel @Inject constructor(
     
     fun onBioChanged(bio: String) {
         _uiState.value = _uiState.value.copy(bio = bio.take(200))
-    }
-    
-    fun onFavoriteGenreChanged(genre: String) {
-        _uiState.value = _uiState.value.copy(favoriteGenre = genre.take(50))
     }
     
     fun onAvatarSelected(uri: Uri) {
@@ -155,7 +150,6 @@ class ProfileSetupViewModel @Inject constructor(
                     username = _uiState.value.username.trim(),
                     email = email,
                     bio = _uiState.value.bio.takeIf { it.isNotBlank() },
-                    favoriteGenre = _uiState.value.favoriteGenre.takeIf { it.isNotBlank() },
                     avatarUrl = avatarUrl
                 ).onSuccess {
                     // Очищаем pending username после сохранения профиля

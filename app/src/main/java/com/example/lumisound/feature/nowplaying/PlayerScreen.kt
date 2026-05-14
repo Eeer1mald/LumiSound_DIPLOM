@@ -8,6 +8,8 @@ import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -68,6 +70,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
@@ -141,9 +144,14 @@ fun PlayerScreen(
     val currentPosition by viewModel.currentPosition.collectAsState()
     val duration by viewModel.duration.collectAsState()
 
-    LaunchedEffect(track.id) {
+    // Всегда используем актуальный трек из PlayerStateHolder — он является единственным
+    // источником истины. Параметр track используется только как fallback при первом рендере.
+    val stateHolderTrack by viewModel.playerStateHolder.currentTrack.collectAsState()
+    val actualTrack = stateHolderTrack ?: track
+
+    LaunchedEffect(actualTrack.id) {
         viewModel.syncPlayerState()
-        reviewViewModel.loadForTrack(track.id)
+        reviewViewModel.loadForTrack(actualTrack.id)
     }
 
     // Плавающие комментарии
@@ -154,20 +162,20 @@ fun PlayerScreen(
     LaunchedEffect(reviewState.comments) {
         if (reviewState.comments.isNotEmpty() && viewModel.showFloatingComments) {
             while (true) {
-                delay(4000)
+                delay(2667)
                 if (!viewModel.showFloatingComments) { showFloatingComment = false; break }
                 val idx = (0 until reviewState.comments.size).random()
                 floatingCommentIndex = idx
                 showFloatingComment = true
-                delay(3000)
+                delay(4500)
                 showFloatingComment = false
-                delay(1000)
+                delay(667)
             }
         }
     }
 
     // Waveform — генерируем один раз для трека
-    val waveform = remember(track.id) { generateWaveform(track.id) }
+    val waveform = remember(actualTrack.id) { generateWaveform(actualTrack.id) }
 
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -177,22 +185,8 @@ fun PlayerScreen(
     var closeProgress by remember { mutableStateOf(0f) }
     var isDraggingToClose by remember { mutableStateOf(false) }
     var targetCloseProgress by remember { mutableStateOf(0f) }
-    var isClosing by remember { mutableStateOf(false) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
     var showTrackInfo by remember { mutableStateOf(false) }
-
-    // Когда isClosing=true — запускаем анимацию до конца, потом вызываем onClose
-    LaunchedEffect(isClosing) {
-        if (isClosing) {
-            // Ждём один кадр чтобы closeProgress=1f успел отрендериться
-            kotlinx.coroutines.delay(32)
-            onClose()
-            isClosing = false
-            closeProgress = 0f
-            targetCloseProgress = 0f
-            isDraggingToClose = false
-        }
-    }
 
     // Горизонтальный свайп — Animatable для плавного контроля
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
@@ -203,11 +197,70 @@ fun PlayerScreen(
     // Соседние треки для отображения при свайпе
     val playlist by viewModel.playerStateHolder.playlist.collectAsState()
     val currentIndex by viewModel.playerStateHolder.currentIndex.collectAsState()
+    val history by viewModel.playerStateHolder.history.collectAsState()
+
+    // prevTrack: из плейлиста или из истории (не тот же трек)
     val prevTrack = playlist.getOrNull(currentIndex - 1)
+        ?: history.lastOrNull()?.takeIf { it.id != actualTrack.id }
+    // nextTrack: из плейлиста
     val nextTrack = playlist.getOrNull(currentIndex + 1)
 
-    // Текущее смещение (px) — используем Animatable.value напрямую через State
+    // hasPrevious синхронизирован с prevTrack — не допускаем свайп без реального трека
+    val hasPreviousEffective = prevTrack != null
+
     val swipeOffsetPx = swipeAnim.value
+
+    // Общий modifier горизонтального свайпа — используется и на обложке, и на нижней панели
+    val hSwipeModifier = Modifier.pointerInput(hasPreviousEffective, nextTrack) {
+        val velocityTracker = VelocityTracker()
+        detectHorizontalDragGestures(
+            onDragStart = {
+                isDraggingHorizontal = true
+                velocityTracker.resetTracking()
+            },
+            onDragEnd = {
+                isDraggingHorizontal = false
+                val velocity = velocityTracker.calculateVelocity().x
+                val offset = swipeAnim.value
+                val threshold = screenWidthPx * 0.25f
+                val flingThreshold = 800f
+                swipeScope.launch {
+                    when {
+                        offset < -threshold || velocity < -flingThreshold -> {
+                            swipeAnim.animateTo(-screenWidthPx, SpringSpec(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
+                            viewModel.nextTrack()
+                            swipeAnim.snapTo(0f)
+                        }
+                        (offset > threshold || velocity > flingThreshold) && hasPreviousEffective -> {
+                            swipeAnim.animateTo(screenWidthPx, SpringSpec(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
+                            viewModel.previousTrack()
+                            swipeAnim.snapTo(0f)
+                        }
+                        else -> {
+                            swipeAnim.animateTo(0f, SpringSpec(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+                        }
+                    }
+                }
+            },
+            onDragCancel = {
+                isDraggingHorizontal = false
+                swipeScope.launch {
+                    swipeAnim.animateTo(0f, SpringSpec(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+                }
+            },
+            onHorizontalDrag = { change, dragAmount ->
+                change.consume()
+                velocityTracker.addPointerInputChange(change)
+                val newOffset = swipeAnim.value + dragAmount
+                val clamped = when {
+                    newOffset > 0 && !hasPreviousEffective -> (newOffset * 0.15f).coerceAtMost(40f)
+                    newOffset < 0 && nextTrack == null -> (newOffset * 0.15f).coerceAtLeast(-40f)
+                    else -> newOffset
+                }
+                swipeScope.launch { swipeAnim.snapTo(clamped) }
+            }
+        )
+    }
 
     val animatedCloseProgress by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetCloseProgress,
@@ -220,6 +273,30 @@ fun PlayerScreen(
     val effectiveCloseProgress = if (isDraggingToClose) closeProgress else animatedCloseProgress
     val contentOffsetY = screenHeightPx * 0.6f * effectiveCloseProgress.coerceIn(0f, 1f)
     val contentAlpha = (1f - effectiveCloseProgress.coerceIn(0f, 1f)).coerceIn(0f, 1f)
+
+    // HD обложка — загружается в фоне, заменяет LQ когда готова
+    var showHd by remember(actualTrack.id) { mutableStateOf(false) }
+    var resolvedHdUrl by remember(actualTrack.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(actualTrack.id) {
+        showHd = false
+        resolvedHdUrl = null
+        // Если hdImageUrl уже отличается от imageUrl — используем его
+        val hdUrl = actualTrack.hdImageUrl
+        val lqUrl = actualTrack.imageUrl
+        val candidateUrl = if (!hdUrl.isNullOrEmpty() && hdUrl != lqUrl) hdUrl else null
+        if (candidateUrl != null) {
+            try {
+                val loader = coil.Coil.imageLoader(context)
+                val req = coil.request.ImageRequest.Builder(context)
+                    .data(candidateUrl).memoryCacheKey(candidateUrl).diskCacheKey(candidateUrl).build()
+                val result = loader.execute(req)
+                if (result is coil.request.SuccessResult) {
+                    resolvedHdUrl = candidateUrl
+                    showHd = true
+                }
+            } catch (_: Exception) {}
+        }
+    }
 
     val closeScope = rememberCoroutineScope()
     val stablePreviousRoute = remember(previousRoute) { previousRoute }
@@ -244,8 +321,8 @@ fun PlayerScreen(
             }
         }
 
-        // Предыдущий трек — виден слева при свайпе вправо
-        if (prevTrack != null && swipeOffsetPx > 0) {
+        // Предыдущий трек — всегда слева, виден при свайпе вправо
+        if (prevTrack != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -259,8 +336,8 @@ fun PlayerScreen(
             }
         }
 
-        // Следующий трек — виден справа при свайпе влево
-        if (nextTrack != null && swipeOffsetPx < 0) {
+        // Следующий трек — всегда справа, виден при свайпе влево
+        if (nextTrack != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -299,10 +376,12 @@ fun PlayerScreen(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
-                            // Кнопка — мгновенное закрытие без анимации
                             isDraggingToClose = true
                             closeProgress = 1f
-                            isClosing = true
+                            viewModel.playerStateHolder.setCloseProgress(1f)
+                            viewModel.playerStateHolder.setPlayerClosing(true)
+                            onClose()
+                            viewModel.playerStateHolder.setPlayerClosing(false)
                         },                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -347,77 +426,45 @@ fun PlayerScreen(
                     .fillMaxWidth()
                     .weight(1f)
                     .clip(RoundedCornerShape(20.dp))
-                    .pointerInput(Unit) {
-                        val velocityTracker = VelocityTracker()
-                        detectHorizontalDragGestures(
-                            onDragStart = {
-                                isDraggingHorizontal = true
-                                velocityTracker.resetTracking()
-                            },
-                            onDragEnd = {
-                                isDraggingHorizontal = false
-                                val velocity = velocityTracker.calculateVelocity().x
-                                val offset = swipeAnim.value
-                                val threshold = screenWidthPx * 0.25f
-                                val flingThreshold = 800f
-                                swipeScope.launch {
-                                    when {
-                                        offset < -threshold || velocity < -flingThreshold -> {
-                                            swipeAnim.animateTo(-screenWidthPx, SpringSpec(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
-                                            viewModel.nextTrack()
-                                            swipeAnim.snapTo(0f)
-                                        }
-                                        (offset > threshold || velocity > flingThreshold) && viewModel.hasPrevious -> {
-                                            swipeAnim.animateTo(screenWidthPx, SpringSpec(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
-                                            viewModel.previousTrack()
-                                            swipeAnim.snapTo(0f)
-                                        }
-                                        else -> {
-                                            swipeAnim.animateTo(0f, SpringSpec(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
-                                        }
-                                    }
-                                }
-                            },
-                            onDragCancel = {
-                                isDraggingHorizontal = false
-                                swipeScope.launch {
-                                    swipeAnim.animateTo(0f, SpringSpec(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
-                                }
-                            },
-                            onHorizontalDrag = { change, dragAmount ->
-                                change.consume()
-                                velocityTracker.addPointerInputChange(change)
-                                val newOffset = swipeAnim.value + dragAmount
-                                val clamped = when {
-                                    newOffset > 0 && !viewModel.hasPrevious -> (newOffset * 0.15f).coerceAtMost(40f)
-                                    newOffset < 0 && nextTrack == null -> (newOffset * 0.15f).coerceAtLeast(-40f)
-                                    else -> newOffset
-                                }
-                                swipeScope.launch { swipeAnim.snapTo(clamped) }
-                            }
-                        )
-                    }
+                    .then(hSwipeModifier)
             ) {
-                if (!track.hdImageUrl.isNullOrEmpty()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context).data(track.hdImageUrl).crossfade(false).build(),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else if (!track.imageUrl.isNullOrEmpty()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context).data(track.imageUrl).crossfade(false).build(),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
+                val hasLowRes = !actualTrack.imageUrl.isNullOrEmpty()
+                val hasHiRes  = !actualTrack.hdImageUrl.isNullOrEmpty()
+                // showHd и LaunchedEffect объявлены на уровне PlayerScreen выше
+
+                if (!hasLowRes && !hasHiRes) {
                     Box(
                         modifier = Modifier.fillMaxSize().background(LocalAppColors.current.surface),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.MusicNote, null, tint = GradientStart.copy(alpha = 0.4f), modifier = Modifier.size(72.dp))
+                    }
+                } else {
+                    // LQ всегда снизу
+                    if (hasLowRes) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(actualTrack.imageUrl)
+                                .crossfade(false)
+                                .memoryCacheKey(actualTrack.imageUrl)
+                                .build(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    // HD поверх — появляется с fade когда загрузится (showHd = true)
+                    if (showHd && resolvedHdUrl != null) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(resolvedHdUrl)
+                                .crossfade(400)
+                                .memoryCacheKey(resolvedHdUrl)
+                                .build(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
                     }
                 }
             }
@@ -428,6 +475,7 @@ fun PlayerScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
                     .padding(top = 16.dp, bottom = 24.dp)
+                    .then(hSwipeModifier)
             ) {
                 // Название и артист
                 Column(
@@ -436,7 +484,7 @@ fun PlayerScreen(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = track.name,
+                        text = actualTrack.name,
                         color = LocalAppColors.current.onBackground,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
@@ -444,7 +492,7 @@ fun PlayerScreen(
                         maxLines = 2
                     )
                     Text(
-                        text = track.artist ?: "",
+                        text = actualTrack.artist ?: "",
                         color = LocalAppColors.current.secondary,
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center,
@@ -452,10 +500,9 @@ fun PlayerScreen(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
-                            // Переходим всегда — ArtistProfileViewModel сам найдёт по имени если нет ID
                             navController?.navigate(
                                 com.example.lumisound.navigation.MainDestination.Artist()
-                                    .createRoute(track.artistId, track.artist ?: "", track.artistImageUrl)
+                                    .createRoute(actualTrack.artistId, actualTrack.artist ?: "", actualTrack.artistImageUrl)
                             )
                         }
                     )
@@ -600,7 +647,7 @@ fun PlayerScreen(
                         Icon(Icons.Default.SkipNext, "Next", tint = LocalAppColors.current.onBackground, modifier = Modifier.size(36.dp))
                     }
                     Box(modifier = Modifier.size(44.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                        navController?.navigate(com.example.lumisound.navigation.MainDestination.Review().createRoute(track.id, track.name, track.artist ?: ""))
+                        navController?.navigate(com.example.lumisound.navigation.MainDestination.Review().createRoute(actualTrack.id, actualTrack.name, actualTrack.artist ?: ""))
                     }, contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.ChatBubbleOutline, "Review", tint = LocalAppColors.current.secondary, modifier = Modifier.size(24.dp))
                     }
@@ -618,15 +665,23 @@ fun PlayerScreen(
                 .padding(start = 60.dp, end = 60.dp) // оставляем место для кнопок хедера
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
-                        onDragStart = { isDraggingToClose = true },
+                        onDragStart = {
+                            isDraggingToClose = true
+                            viewModel.playerStateHolder.setPlayerClosing(true)
+                        },
                         onDragEnd = {
                             if (closeProgress >= 0.4f) {
-                                // Выставляем closeProgress=1f (плеер полностью скрыт)
-                                // isDraggingToClose остаётся true — effectiveCloseProgress = closeProgress
+                                // Плеер уже сдвинут вниз (alpha=0) — закрываем мгновенно.
+                                // НЕ сбрасываем closeProgress/isDraggingToClose — иначе Compose
+                                // успеет отрендерить кадр с alpha=1 до того как NavHost уберёт экран.
                                 closeProgress = 1f
-                                // isClosing запустит LaunchedEffect: ждёт 2 кадра → onClose()
-                                isClosing = true
+                                viewModel.playerStateHolder.setCloseProgress(1f)
+                                onClose()
+                                // Сброс только после того как экран убран из дерева
+                                viewModel.playerStateHolder.setPlayerClosing(false)
                             } else {
+                                viewModel.playerStateHolder.setPlayerClosing(false)
+                                viewModel.playerStateHolder.setCloseProgress(0f)
                                 isDraggingToClose = false
                                 closeProgress = 0f
                                 targetCloseProgress = 0f
@@ -635,9 +690,11 @@ fun PlayerScreen(
                         onVerticalDrag = { change, dragAmount ->
                             if (dragAmount > 0) {
                                 closeProgress = (closeProgress + dragAmount / maxDragPx).coerceIn(0f, 1f)
+                                viewModel.playerStateHolder.setCloseProgress(closeProgress)
                                 change.consume()
                             } else if (dragAmount < 0 && closeProgress > 0f) {
                                 closeProgress = (closeProgress + dragAmount / maxDragPx).coerceIn(0f, 1f)
+                                viewModel.playerStateHolder.setCloseProgress(closeProgress)
                                 change.consume()
                             }
                         }
@@ -648,14 +705,20 @@ fun PlayerScreen(
         // Шторка добавления в плейлист
         if (showAddToPlaylist) {
             com.example.lumisound.feature.playlist.AddToPlaylistOverlay(
-                track = track,
+                track = actualTrack,
                 onDismiss = { showAddToPlaylist = false }
             )
         }
 
         // Информация о треке
-        if (showTrackInfo) {
-            TrackInfoSheet(track = track, onDismiss = { showTrackInfo = false })
+        AnimatedVisibility(
+            visible = showTrackInfo,
+            enter = fadeIn(animationSpec = tween(200)) +
+                    slideInVertically(animationSpec = tween(350, easing = androidx.compose.animation.core.EaseOutCubic)) { it },
+            exit = fadeOut(animationSpec = tween(180)) +
+                    slideOutVertically(animationSpec = tween(280, easing = androidx.compose.animation.core.EaseInCubic)) { it }
+        ) {
+            TrackInfoSheet(track = actualTrack, onDismiss = { showTrackInfo = false })
         }
     } // закрываем корневой Box
 }
@@ -713,15 +776,20 @@ private fun TrackInfoSheet(track: Track, onDismiss: () -> Unit) {
 
     LaunchedEffect(track.id) {
         isLoading = true
-        // Загружаем трек и артиста параллельно
-        val trackResult = audiusApi.getTrackById(track.id)
-        fullTrack = trackResult.getOrNull()
-        val artistId = fullTrack?.artist?.id ?: track.artistId
-        if (!artistId.isNullOrBlank()) {
-            fullArtist = audiusApi.getArtist(artistId).getOrNull()
+        // Для custom tracks (id начинается с "custom_") — не запрашиваем Audius API
+        val isCustom = track.id.startsWith("custom_")
+        if (!isCustom) {
+            val trackResult = audiusApi.getTrackById(track.id)
+            fullTrack = trackResult.getOrNull()
+            val artistId = fullTrack?.artist?.id ?: track.artistId
+            if (!artistId.isNullOrBlank()) {
+                fullArtist = audiusApi.getArtist(artistId).getOrNull()
+            }
         }
         isLoading = false
     }
+
+    var dragOffset by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
 
     Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
         // Затемнение
@@ -736,8 +804,19 @@ private fun TrackInfoSheet(track: Track, onDismiss: () -> Unit) {
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
+                .graphicsLayer { translationY = dragOffset.coerceAtLeast(0f) }
                 .background(Color(0xFF1A1A1A), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .navigationBarsPadding()
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { if (dragOffset > 120f) onDismiss() else dragOffset = 0f },
+                        onDragCancel = { dragOffset = 0f },
+                        onVerticalDrag = { change, delta ->
+                            change.consume()
+                            dragOffset = (dragOffset + delta).coerceAtLeast(0f)
+                        }
+                    )
+                }
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
         ) {
             // Ручка

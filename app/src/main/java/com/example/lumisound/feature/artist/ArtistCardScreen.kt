@@ -91,10 +91,19 @@ fun ArtistCardScreen(
 
     var showAllTracks by remember { mutableStateOf(false) }
 
+    val artist = state.artist
+    val avatarUrl = state.avatarUrl ?: artistImageUrl
+    val coverUrl = state.coverUrl
+    // For custom artists, use state fields; for Audius artists, use artist object
+    val displayName = if (state.isCustomArtist) state.customArtistName ?: artistName else artistName
+    val displayBio = if (state.isCustomArtist) state.customArtistBio else artist?.bio
+    val displayLocation = if (state.isCustomArtist) state.customArtistLocation else artist?.location
+    val isVerified = if (state.isCustomArtist) false else artist?.isVerified == true
+
     // Экран всех треков
     if (showAllTracks) {
         ArtistAllTracksScreen(
-            artistName = artistName,
+            artistName = displayName,
             tracks = state.allTracks,
             onClose = { showAllTracks = false },
             onTrackClick = { track ->
@@ -105,10 +114,6 @@ fun ArtistCardScreen(
         )
         return
     }
-
-    val artist = state.artist
-    val avatarUrl = state.avatarUrl ?: artistImageUrl
-    val coverUrl = state.coverUrl
 
     Box(
         modifier = modifier
@@ -208,12 +213,12 @@ fun ArtistCardScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = artistName,
+                                text = displayName,
                                 color = Color.White,
                                 fontSize = 30.sp,
                                 fontWeight = FontWeight.ExtraBold
                             )
-                            if (artist?.isVerified == true) {
+                            if (isVerified) {
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
                                     contentDescription = "Verified",
@@ -222,9 +227,9 @@ fun ArtistCardScreen(
                                 )
                             }
                         }
-                        if (!artist?.location.isNullOrEmpty()) {
+                        if (!displayLocation.isNullOrEmpty()) {
                             Text(
-                                text = artist!!.location!!,
+                                text = displayLocation,
                                 color = Color.White.copy(alpha = 0.7f),
                                 fontSize = 13.sp,
                                 modifier = Modifier.padding(top = 2.dp)
@@ -257,7 +262,7 @@ fun ArtistCardScreen(
                                     .crossfade(false)
                                     .memoryCacheKey(avatarUrl)
                                     .build(),
-                                contentDescription = artistName,
+                                contentDescription = displayName,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
                             )
@@ -273,9 +278,16 @@ fun ArtistCardScreen(
                         modifier = Modifier.weight(1f),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        StatItem(label = "Треки", value = formatCount(artist?.trackCount))
-                        StatItem(label = "Фолловеры", value = formatCount(artist?.followerCount))
-                        StatItem(label = "Плейлисты", value = formatCount(artist?.playlistCount))
+                        if (state.isCustomArtist) {
+                            StatItem(label = "Треки", value = formatCount(state.allTracks.size))
+                            if (!state.customArtistGenre.isNullOrEmpty()) {
+                                StatItem(label = "Жанр", value = state.customArtistGenre ?: "")
+                            }
+                        } else {
+                            StatItem(label = "Треки", value = formatCount(artist?.trackCount))
+                            StatItem(label = "Фолловеры", value = formatCount(artist?.followerCount))
+                            StatItem(label = "Плейлисты", value = formatCount(artist?.playlistCount))
+                        }
                     }
                 }
             }
@@ -319,7 +331,7 @@ fun ArtistCardScreen(
             }
 
             // ── Биография ───────────────────────────────────────────
-            if (!artist?.bio.isNullOrEmpty()) {
+            if (!displayBio.isNullOrEmpty()) {
                 item {
                     Column(
                         modifier = Modifier
@@ -334,7 +346,7 @@ fun ArtistCardScreen(
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
                         Text(
-                            text = artist!!.bio!!,
+                            text = displayBio,
                             color = LocalAppColors.current.secondary,
                             fontSize = 14.sp,
                             lineHeight = 20.sp
@@ -418,7 +430,7 @@ fun ArtistCardScreen(
                                 .padding(horizontal = 16.dp, vertical = 7.dp)
                         ) {
                             Text(
-                                "See All",
+                                "Все",
                                 color = LocalAppColors.current.onBackground,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -447,7 +459,7 @@ fun ArtistCardScreen(
                 }
             }
 
-            item { Spacer(modifier = Modifier.navigationBarsPadding()) }
+            item { Spacer(modifier = Modifier.navigationBarsPadding().height(140.dp)) }
         }
     }
 }
@@ -681,7 +693,7 @@ fun ArtistAllTracksScreen(
                 )
             }
 
-            item { Spacer(modifier = Modifier.navigationBarsPadding()) }
+            item { Spacer(modifier = Modifier.navigationBarsPadding().height(140.dp)) }
         }
     }
 }

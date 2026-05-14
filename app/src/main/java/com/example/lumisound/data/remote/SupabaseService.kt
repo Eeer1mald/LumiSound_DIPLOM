@@ -125,10 +125,21 @@ class SupabaseService @Inject constructor(
         } else {
             // Try to parse structured error
             val authError = runCatching { Json.decodeFromString(SupabaseAuthError.serializer(), text) }.getOrNull()
-            val message = when (authError?.error) {
-                "email_not_confirmed" -> "Подтвердите email — письмо отправлено на вашу почту."
-                "invalid_grant" -> "Неверный email или пароль."
-                else -> authError?.description ?: "Не удалось войти (${response.status})."
+            val errorCode = authError?.error?.lowercase() ?: ""
+            val errorDesc = authError?.description?.lowercase() ?: ""
+            val message = when {
+                errorCode == "email_not_confirmed" -> "Подтвердите email — письмо отправлено на вашу почту."
+                errorCode == "invalid_grant" -> "Неверный email или пароль."
+                errorCode == "invalid_credentials" -> "Неверный email или пароль."
+                errorCode == "user_not_found" -> "Пользователь с таким email не найден."
+                errorCode == "too_many_requests" -> "Слишком много попыток. Попробуйте позже."
+                errorDesc.contains("invalid login") -> "Неверный email или пароль."
+                errorDesc.contains("invalid credentials") -> "Неверный email или пароль."
+                errorDesc.contains("email not confirmed") -> "Подтвердите email — письмо отправлено на вашу почту."
+                response.status.value == 400 -> "Неверный email или пароль."
+                response.status.value == 422 -> "Неверный формат email."
+                response.status.value == 429 -> "Слишком много попыток. Попробуйте позже."
+                else -> authError?.description ?: "Не удалось войти. Попробуйте ещё раз."
             }
             throw IllegalStateException(message)
         }
@@ -203,11 +214,10 @@ class SupabaseService @Inject constructor(
 
     @Serializable
     data class ProfileInsert(
-        val id: String? = null, // optional if you use auth.uid() default
+        val id: String? = null,
         val username: String,
         val email: String,
         val bio: String? = null,
-        @SerialName("favorite_genre") val favoriteGenre: String? = null,
         @SerialName("avatar_url") val avatarUrl: String? = null
     )
 
@@ -270,7 +280,7 @@ class SupabaseService @Inject constructor(
         }
     }
 
-    suspend fun upsertProfile(accessToken: String, userId: String?, username: String, email: String, bio: String? = null, favoriteGenre: String? = null, avatarUrl: String? = null) {
+    suspend fun upsertProfile(accessToken: String, userId: String?, username: String, email: String, bio: String? = null, avatarUrl: String? = null) {
         // Получаем user ID из токена, если он не передан
         var finalUserId = userId
         if (finalUserId == null) {
@@ -291,7 +301,6 @@ class SupabaseService @Inject constructor(
                 username = username,
                 email = email,
                 bio = bio,
-                favoriteGenre = favoriteGenre,
                 avatarUrl = avatarUrl
             )))
         }
@@ -315,7 +324,6 @@ class SupabaseService @Inject constructor(
                         username = username,
                         email = email,
                         bio = bio,
-                        favoriteGenre = favoriteGenre,
                         avatarUrl = avatarUrl
                     )))
                 }
@@ -395,7 +403,6 @@ class SupabaseService @Inject constructor(
         val username: String,
         val email: String,
         val bio: String? = null,
-        @SerialName("favorite_genre") val favoriteGenre: String? = null,
         @SerialName("avatar_url") val avatarUrl: String? = null,
         @SerialName("is_public") val isPublic: Boolean? = true,
         @SerialName("created_at") val createdAt: String? = null,
@@ -995,7 +1002,8 @@ class SupabaseService @Inject constructor(
         @SerialName("avg_charisma") val avgCharisma: Double? = null,
         @SerialName("avg_atmosphere") val avgAtmosphere: Double? = null,
         @SerialName("avg_overall") val avgOverall: Double? = null,
-        @SerialName("rating_count") val ratingCount: Int = 0
+        @SerialName("rating_count") val ratingCount: Int = 0,
+        @SerialName("review_count") val reviewCount: Int = 0
     )
 
     suspend fun getTrackAverageRating(accessToken: String, audiusTrackId: String): TrackAverageRating? {
@@ -1020,11 +1028,13 @@ class SupabaseService @Inject constructor(
                 @SerialName("avg_charisma") val avgCharisma: Double? = null,
                 @SerialName("avg_atmosphere") val avgAtmosphere: Double? = null,
                 @SerialName("avg_overall") val avgOverall: Double? = null,
-                @SerialName("rating_count") val ratingCount: Int = 0
+                @SerialName("rating_count") val ratingCount: Int = 0,
+                @SerialName("review_count") val reviewCount: Int = 0
             )
             val rows = json.decodeFromString<List<ViewRow>>(text)
             val row = rows.firstOrNull() ?: return null
-            if (row.ratingCount == 0) return null
+            val count = if (row.ratingCount > 0) row.ratingCount else row.reviewCount
+            if (count == 0) return null
             TrackAverageRating(
                 avgRhyme = row.avgRhyme,
                 avgImagery = row.avgImagery,
@@ -1032,7 +1042,8 @@ class SupabaseService @Inject constructor(
                 avgCharisma = row.avgCharisma,
                 avgAtmosphere = row.avgAtmosphere,
                 avgOverall = row.avgOverall,
-                ratingCount = row.ratingCount
+                ratingCount = count,
+                reviewCount = count
             )
         } catch (e: Exception) {
             Log.e("SupabaseService", "Ошибка получения средних оценок: ${e.message}")
@@ -1170,6 +1181,20 @@ class SupabaseService @Inject constructor(
             val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
             val all = mutableListOf<TrackRatingResponse>()
 
+            // Если нет избранного — возвращаем просто самые популярные рецензии
+            if (favoriteTrackIds.isEmpty() && favoriteArtistNames.isEmpty()) {
+                val r = http.get {
+                    url("$baseUrl/rest/v1/track_ratings")
+                    header("apikey", anonKey)
+                    header(HttpHeaders.Authorization, "Bearer $anonKey")
+                    parameter("review", "not.is.null")
+                    parameter("order", "reputation.desc,overall_score.desc")
+                    parameter("limit", limit.toString())
+                }
+                return if (r.status.isSuccess()) json.decodeFromString<List<TrackRatingResponse>>(r.bodyAsText())
+                else emptyList()
+            }
+
             // Рецензии по любимым трекам
             if (favoriteTrackIds.isNotEmpty()) {
                 val ids = favoriteTrackIds.joinToString(",")
@@ -1203,6 +1228,20 @@ class SupabaseService @Inject constructor(
                         all += items.filter { item -> favoriteTrackIds.none { item.audiusTrackId == it } }
                     }
                 }
+            }
+
+            // Если по избранному ничего не нашли — fallback на популярные
+            if (all.isEmpty()) {
+                val r = http.get {
+                    url("$baseUrl/rest/v1/track_ratings")
+                    header("apikey", anonKey)
+                    header(HttpHeaders.Authorization, "Bearer $anonKey")
+                    parameter("review", "not.is.null")
+                    parameter("order", "reputation.desc,overall_score.desc")
+                    parameter("limit", limit.toString())
+                }
+                return if (r.status.isSuccess()) json.decodeFromString<List<TrackRatingResponse>>(r.bodyAsText())
+                else emptyList()
             }
 
             // Сортируем: любимые треки выше, потом по репутации
@@ -1286,14 +1325,15 @@ class SupabaseService @Inject constructor(
                 @Serializable data class VoteRow(val vote: Int)
                 val votes = json.decodeFromString<List<VoteRow>>(countResponse.bodyAsText())
                 val reputation = votes.sumOf { it.vote }
-                http.post {
+                // Используем PATCH для обновления только поля reputation
+                http.patch {
                     url("$baseUrl/rest/v1/track_ratings")
                     header("apikey", anonKey)
                     header(HttpHeaders.Authorization, "Bearer $accessToken")
-                    header("Prefer", "resolution=merge-duplicates,return=minimal")
-                    parameter("on_conflict", "id")
+                    header("Prefer", "return=minimal")
+                    parameter("id", "eq.$ratingId")
                     contentType(ContentType.Application.Json)
-                    setBody("""[{"id":"$ratingId","reputation":$reputation}]""")
+                    setBody("""{"reputation":$reputation}""")
                 }
             }
         }
@@ -2099,5 +2139,206 @@ class SupabaseService @Inject constructor(
             }
             if (!response.status.isSuccess()) throw IllegalStateException("Ошибка очистки плейлиста: ${response.status}")
         }
+    }
+
+    // ── Custom Tracks (admin) ─────────────────────────────────────────────────
+
+    @Serializable
+    data class CustomTrackResponse(
+        val id: String,
+        @SerialName("artist_id") val artistId: String? = null,
+        val title: String,
+        val genre: String? = null,
+        val duration: Int? = null,
+        @SerialName("audio_url") val audioUrl: String? = null,
+        @SerialName("cover_url") val coverUrl: String? = null,
+        @SerialName("play_count") val playCount: Int = 0,
+        @SerialName("is_published") val isPublished: Boolean = true,
+        @SerialName("created_at") val createdAt: String? = null,
+        // joined from custom_artists
+        val artistName: String? = null,
+        val artistAvatarUrl: String? = null
+    )
+
+    suspend fun searchCustomTracks(query: String, limit: Int = 10): List<CustomTrackResponse> {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/custom_tracks")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                parameter("title", "ilike.*${query.take(50)}*")
+                parameter("is_published", "eq.true")
+                parameter("select", "id,artist_id,title,genre,duration,audio_url,cover_url,play_count")
+                parameter("limit", limit.toString())
+            }
+            if (!response.status.isSuccess()) return emptyList()
+            val tracks = json.decodeFromString<List<CustomTrackResponse>>(response.bodyAsText())
+
+            // Обогащаем именами артистов
+            val artistIds = tracks.mapNotNull { it.artistId }.distinct()
+            if (artistIds.isEmpty()) return tracks
+
+            val artistsResponse = http.get {
+                url("$baseUrl/rest/v1/custom_artists")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                parameter("id", "in.(${artistIds.joinToString(",")})")
+                parameter("select", "id,name,avatar_url")
+            }
+            @Serializable data class ArtistRow(val id: String, val name: String, @SerialName("avatar_url") val avatarUrl: String? = null)
+            val artists = if (artistsResponse.status.isSuccess())
+                json.decodeFromString<List<ArtistRow>>(artistsResponse.bodyAsText())
+            else emptyList()
+            val artistMap = artists.associateBy { it.id }
+
+            tracks.map { t ->
+                val a = artistMap[t.artistId]
+                t.copy(artistName = a?.name, artistAvatarUrl = a?.avatarUrl)
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    @Serializable
+    data class CustomArtistResponse(
+        val id: String,
+        val name: String,
+        val bio: String? = null,
+        val genre: String? = null,
+        val location: String? = null,
+        @SerialName("avatar_url") val avatarUrl: String? = null,
+        @SerialName("cover_url") val coverUrl: String? = null,
+        @SerialName("is_verified") val isVerified: Boolean = false
+    )
+
+    /** Поиск custom artists по имени */
+    suspend fun searchCustomArtists(query: String, limit: Int = 5): List<CustomArtistResponse> {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/custom_artists")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                parameter("name", "ilike.*${query.take(50)}*")
+                parameter("select", "id,name,bio,genre,location,avatar_url,cover_url,is_verified")
+                parameter("limit", limit.toString())
+            }
+            if (!response.status.isSuccess()) return emptyList()
+            json.decodeFromString<List<CustomArtistResponse>>(response.bodyAsText())
+        } catch (_: Exception) { emptyList() }
+    }
+
+    /** Получить одного custom artist по UUID */
+    suspend fun getCustomArtist(artistId: String): CustomArtistResponse? {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/custom_artists")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                parameter("id", "eq.$artistId")
+                parameter("select", "id,name,bio,genre,location,avatar_url,cover_url,is_verified")
+                parameter("limit", "1")
+            }
+            if (!response.status.isSuccess()) return null
+            json.decodeFromString<List<CustomArtistResponse>>(response.bodyAsText()).firstOrNull()
+        } catch (_: Exception) { null }
+    }
+
+    /** Получить все треки custom artist по UUID */
+    suspend fun getCustomTracksByArtist(artistId: String): List<CustomTrackResponse> {
+        return try {
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/custom_tracks")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $anonKey")
+                parameter("artist_id", "eq.$artistId")
+                parameter("is_published", "eq.true")
+                parameter("select", "id,artist_id,title,genre,duration,audio_url,cover_url,play_count")
+                parameter("order", "created_at.desc")
+            }
+            if (!response.status.isSuccess()) return emptyList()
+            json.decodeFromString<List<CustomTrackResponse>>(response.bodyAsText())
+        } catch (_: Exception) { emptyList() }
+    }
+
+    // ── Жалобы ────────────────────────────────────────────────────────────────
+
+    @Serializable
+    data class ReportInsert(
+        @SerialName("reporter_id") val reporterId: String,
+        @SerialName("target_type") val targetType: String,   // "comment" | "review"
+        @SerialName("target_id") val targetId: String,
+        val reason: String,
+        @SerialName("target_content") val targetContent: String? = null,
+        @SerialName("target_user_id") val targetUserId: String? = null,
+        @SerialName("target_username") val targetUsername: String? = null,
+        @SerialName("track_title") val trackTitle: String? = null
+    )
+
+    suspend fun submitReport(accessToken: String, report: ReportInsert): Result<Unit> {
+        return runCatching {
+            val response = http.post {
+                url("$baseUrl/rest/v1/reports")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody(listOf(report))
+            }
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException("Ошибка отправки жалобы: ${response.status}")
+            }
+        }
+    }
+
+    // ── Апелляции ─────────────────────────────────────────────────────────────
+
+    @Serializable
+    data class BanAppealInsert(
+        @SerialName("user_id") val userId: String,
+        @SerialName("ban_id") val banId: String,
+        val message: String
+    )
+
+    suspend fun submitBanAppeal(accessToken: String, appeal: BanAppealInsert): Result<Unit> {
+        return runCatching {
+            val response = http.post {
+                url("$baseUrl/rest/v1/ban_appeals")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody(listOf(appeal))
+            }
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException("Ошибка отправки апелляции: ${response.status}")
+            }
+        }
+    }
+
+    @Serializable
+    data class UserBanResponse(
+        val id: String,
+        @SerialName("user_id") val userId: String,
+        val reason: String,
+        @SerialName("is_active") val isActive: Boolean,
+        @SerialName("created_at") val createdAt: String? = null
+    )
+
+    suspend fun getMyBan(accessToken: String): UserBanResponse? {
+        return try {
+            val userId = getUser(accessToken)?.id ?: return null
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            val response = http.get {
+                url("$baseUrl/rest/v1/user_bans")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("user_id", "eq.$userId")
+                parameter("is_active", "eq.true")
+                parameter("limit", "1")
+            }
+            if (!response.status.isSuccess()) return null
+            json.decodeFromString<List<UserBanResponse>>(response.bodyAsText()).firstOrNull()
+        } catch (_: Exception) { null }
     }
 }

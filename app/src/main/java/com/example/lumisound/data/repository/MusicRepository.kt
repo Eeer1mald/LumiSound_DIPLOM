@@ -6,6 +6,9 @@ import com.example.lumisound.data.remote.AudiusApiService
 import com.example.lumisound.data.remote.AudiusArtistFull
 import com.example.lumisound.data.remote.AudiusTrack
 import com.example.lumisound.data.remote.SupabaseService
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -56,6 +59,11 @@ class MusicRepository @Inject constructor(
     /** Строит stream URL для трека — не требует сетевого запроса */
     fun getStreamUrl(trackId: String): String = audiusApi.getStreamUrl(trackId)
 
+    /** Получает полные данные трека по ID с обложкой и метаданными */
+    suspend fun getTrackById(trackId: String): Track? {
+        return audiusApi.getTrackById(trackId).getOrNull()?.toTrack()
+    }
+
     suspend fun searchTracks(query: String, limit: Int = 20): Result<List<Track>> {
         return audiusApi.searchTracks(query, limit).map { audiusTracks ->
             audiusTracks.map { it.toTrack() }
@@ -85,109 +93,130 @@ class MusicRepository @Inject constructor(
         }
     }
 
-    private suspend fun fetchDiscoverTracks(token: String?, needed: Int): List<Track> {
+    private suspend fun fetchDiscoverTracks(token: String?, needed: Int): List<Track> = coroutineScope {
         val result = mutableListOf<Track>()
         val seenIds = discoverPool.map { it.id }.toMutableSet()
 
         // Получаем историю один раз
         val historyIds = if (token != null) {
-            cachedHistoryIds ?: supabase.getTrackHistory(token, limit = 300)
-                .map { it.trackId }.toSet().also { cachedHistoryIds = it }
+            cachedHistoryIds ?: withTimeoutOrNull(5_000L) {
+                supabase.getTrackHistory(token, limit = 300).map { it.trackId }.toSet()
+            }.also { cachedHistoryIds = it } ?: emptySet()
         } else emptySet()
 
         if (token != null) {
-            // 1. Треки из плейлистов пользователя (новый источник!)
+            // 1. Треки из плейлистов пользователя — параллельно
             val playlistTrackIds = cachedPlaylistTrackIds ?: run {
-                val playlists = supabase.getMyPlaylists(token)
+                val playlists = withTimeoutOrNull(5_000L) { supabase.getMyPlaylists(token) } ?: emptyList()
                 val ids = mutableListOf<String>()
-                for (pl in playlists.take(5)) {
-                    val tracks = supabase.getPlaylistTracks(token, pl.id)
-                    ids.addAll(tracks.map { it.trackId })
+                // Загружаем треки плейлистов параллельно
+                val playlistJobs = playlists.take(3).map { pl ->
+                    async {
+                        withTimeoutOrNull(4_000L) { supabase.getPlaylistTracks(token, pl.id) }
+                            ?.map { it.trackId } ?: emptyList()
+                    }
                 }
+                playlistJobs.forEach { ids.addAll(it.await()) }
                 ids.also { cachedPlaylistTrackIds = it }
             }
 
-            // Для плейлистных треков ищем их через Audius по ID
-            for (trackId in playlistTrackIds.filter { it !in seenIds && it !in historyIds }.take(10)) {
-                // Ищем трек через поиск по ID (Audius поддерживает /v1/tracks/{id})
-                audiusApi.getTrackById(trackId).getOrNull()?.let { t ->
-                    val track = t.toTrack()
-                    if (seenIds.add(track.id)) result.add(track)
+            // Загружаем треки плейлистов параллельно
+            val playlistTrackJobs = playlistTrackIds
+                .filter { it !in seenIds && it !in historyIds }
+                .take(6)
+                .map { trackId ->
+                    async {
+                        withTimeoutOrNull(4_000L) {
+                            audiusApi.getTrackById(trackId).getOrNull()?.toTrack()
+                        }
+                    }
                 }
+            playlistTrackJobs.forEach { job ->
+                job.await()?.let { track -> if (seenIds.add(track.id)) result.add(track) }
             }
 
-            // 2. Треки любимых артистов (ротация — каждый раз разные артисты)
-            val favArtistIds = cachedFavArtistIds ?: supabase.getFavoriteArtists(token, limit = 20)
-                .map { it.artistId }.also { cachedFavArtistIds = it }
+            // 2. Треки любимых артистов — параллельно
+            val favArtistIds = cachedFavArtistIds ?: withTimeoutOrNull(5_000L) {
+                supabase.getFavoriteArtists(token, limit = 20).map { it.artistId }
+            }.also { cachedFavArtistIds = it } ?: emptyList()
 
             if (favArtistIds.isNotEmpty()) {
-                // Берём артистов со смещением для разнообразия
                 val artistsToFetch = favArtistIds
                     .drop(discoverArtistOffset % favArtistIds.size.coerceAtLeast(1))
-                    .take(5)
-                discoverArtistOffset = (discoverArtistOffset + 5) % favArtistIds.size.coerceAtLeast(1)
+                    .take(4)
+                discoverArtistOffset = (discoverArtistOffset + 4) % favArtistIds.size.coerceAtLeast(1)
 
-                for (artistId in artistsToFetch) {
-                    audiusApi.getArtistTracks(artistId, limit = 10).getOrNull()
-                        ?.map { it.toTrack() }
-                        ?.filter { it.id !in seenIds && it.id !in historyIds }
-                        ?.shuffled()
-                        ?.take(4)
-                        ?.forEach { if (seenIds.add(it.id)) result.add(it) }
+                val artistJobs = artistsToFetch.map { artistId ->
+                    async {
+                        withTimeoutOrNull(5_000L) {
+                            audiusApi.getArtistTracks(artistId, limit = 8).getOrNull()
+                                ?.map { it.toTrack() }
+                                ?.filter { it.id !in seenIds && it.id !in historyIds }
+                                ?.shuffled()?.take(3)
+                        } ?: emptyList()
+                    }
+                }
+                artistJobs.forEach { job ->
+                    job.await().forEach { track -> if (seenIds.add(track.id)) result.add(track) }
                 }
             }
 
-            // 3. Поиск по жанрам из оценок (используем реальный genre, не trackArtist)
-            val topGenres = cachedTopGenres ?: run {
-                val ratings = supabase.getMyRatings(token, limit = 100)
-                // Берём жанры из избранных треков
-                val favTracks = supabase.getFavoriteTracks(token, limit = 50)
-                val genresFromFav = favTracks.mapNotNull { it.trackArtist.takeIf { a -> a.isNotBlank() } }
-                // Комбинируем: жанры из оценок + артисты из избранного как поисковые запросы
-                val genreQueries = ratings
-                    .mapNotNull { it.trackArtist.takeIf { a -> a.isNotBlank() } }
-                    .groupingBy { it }.eachCount()
-                    .entries.sortedByDescending { it.value }
-                    .take(5).map { it.key }
-                (genreQueries + genresFromFav.take(3)).distinct().take(5)
-                    .also { cachedTopGenres = it }
-            }
+            // 3. Поиск по жанрам — параллельно, только если ещё нужны треки
+            if (result.size < needed) {
+                val topGenres = cachedTopGenres ?: run {
+                    val ratings = withTimeoutOrNull(4_000L) { supabase.getMyRatings(token, limit = 50) } ?: emptyList()
+                    val genreQueries = ratings
+                        .mapNotNull { it.trackArtist.takeIf { a -> a.isNotBlank() } }
+                        .groupingBy { it }.eachCount()
+                        .entries.sortedByDescending { it.value }
+                        .take(4).map { it.key }
+                    genreQueries.also { cachedTopGenres = it }
+                }
 
-            val genresToSearch = topGenres
-                .drop(discoverGenreOffset % topGenres.size.coerceAtLeast(1))
-                .take(3)
-            discoverGenreOffset = (discoverGenreOffset + 3) % topGenres.size.coerceAtLeast(1)
+                val genresToSearch = topGenres
+                    .drop(discoverGenreOffset % topGenres.size.coerceAtLeast(1))
+                    .take(2)
+                discoverGenreOffset = (discoverGenreOffset + 2) % topGenres.size.coerceAtLeast(1)
 
-            for (query in genresToSearch) {
-                audiusApi.searchTracks(query, limit = 10).getOrNull()
-                    ?.map { it.toTrack() }
-                    ?.filter { it.id !in seenIds && it.id !in historyIds }
-                    ?.shuffled()
-                    ?.take(4)
-                    ?.forEach { if (seenIds.add(it.id)) result.add(it) }
+                val genreJobs = genresToSearch.map { query ->
+                    async {
+                        withTimeoutOrNull(5_000L) {
+                            audiusApi.searchTracks(query, limit = 8).getOrNull()
+                                ?.map { it.toTrack() }
+                                ?.filter { it.id !in seenIds && it.id !in historyIds }
+                                ?.shuffled()?.take(3)
+                        } ?: emptyList()
+                    }
+                }
+                genreJobs.forEach { job ->
+                    job.await().forEach { track -> if (seenIds.add(track.id)) result.add(track) }
+                }
             }
         }
 
-        // 4. Fallback / дополнение — trending + underground (всегда, чтобы фид не был пустым)
+        // 4. Fallback — trending (параллельно с underground)
         if (result.size < needed) {
             val trendingGenres = listOf("Hip-Hop/Rap", "Electronic", "Pop", "R&B/Soul", null)
             val genreIdx = (discoverPool.size / 5) % trendingGenres.size
-            audiusApi.getTrendingTracks(limit = 20, genre = trendingGenres[genreIdx]).getOrNull()
-                ?.map { it.toTrack() }
-                ?.filter { it.id !in seenIds }
-                ?.shuffled()
-                ?.forEach { if (seenIds.add(it.id)) result.add(it) }
+
+            val trendingJob = async {
+                withTimeoutOrNull(6_000L) {
+                    audiusApi.getTrendingTracks(limit = 20, genre = trendingGenres[genreIdx]).getOrNull()
+                        ?.map { it.toTrack() }?.filter { it.id !in seenIds }?.shuffled()
+                } ?: emptyList()
+            }
+            val undergroundJob = async {
+                withTimeoutOrNull(6_000L) {
+                    audiusApi.getUndergroundTrendingTracks(limit = 20).getOrNull()
+                        ?.map { it.toTrack() }?.filter { it.id !in seenIds }?.shuffled()
+                } ?: emptyList()
+            }
+
+            trendingJob.await().forEach { if (seenIds.add(it.id)) result.add(it) }
+            undergroundJob.await().forEach { if (seenIds.add(it.id)) result.add(it) }
         }
 
-        if (result.size < needed) {
-            audiusApi.getUndergroundTrendingTracks(limit = 20).getOrNull()
-                ?.map { it.toTrack() }
-                ?.filter { it.id !in seenIds }
-                ?.shuffled()
-                ?.forEach { if (seenIds.add(it.id)) result.add(it) }
-        }
-
-        return result.shuffled()
+        result.shuffled()
     }
 
     // ── "Для вас" — любимое: избранные треки + плейлисты + топ артисты ──────────
@@ -210,66 +239,91 @@ class MusicRepository @Inject constructor(
         }
     }
 
-    private suspend fun fetchFollowingTracks(token: String?, needed: Int): List<Track> {
+    private suspend fun fetchFollowingTracks(token: String?, needed: Int): List<Track> = coroutineScope {
         val result = mutableListOf<Track>()
         val seenIds = followingPool.map { it.id }.toMutableSet()
 
         if (token != null) {
-            // 1. Избранные треки пользователя — самое "любимое"
-            val favTracks = supabase.getFavoriteTracks(token, limit = 50, orderByPlayCount = true)
-            for (ft in favTracks.filter { it.trackId !in seenIds }.take(15)) {
-                audiusApi.getTrackById(ft.trackId).getOrNull()?.let { t ->
-                    val track = t.toTrack()
-                    if (seenIds.add(track.id)) result.add(track)
+            // 1. Избранные треки — параллельно
+            val favTracks = withTimeoutOrNull(5_000L) {
+                supabase.getFavoriteTracks(token, limit = 30, orderByPlayCount = true)
+            } ?: emptyList()
+
+            val favTrackJobs = favTracks
+                .filter { it.trackId !in seenIds }
+                .take(10)
+                .map { ft ->
+                    async {
+                        withTimeoutOrNull(4_000L) {
+                            audiusApi.getTrackById(ft.trackId).getOrNull()?.toTrack()
+                        }
+                    }
                 }
+            favTrackJobs.forEach { job ->
+                job.await()?.let { track -> if (seenIds.add(track.id)) result.add(track) }
             }
 
-            // 2. Треки из плейлистов пользователя
-            val playlists = supabase.getMyPlaylists(token)
-            for (pl in playlists.take(5)) {
-                val tracks = supabase.getPlaylistTracks(token, pl.id)
-                for (pt in tracks.filter { it.trackId !in seenIds }.take(6)) {
-                    audiusApi.getTrackById(pt.trackId).getOrNull()?.let { t ->
-                        val track = t.toTrack()
-                        if (seenIds.add(track.id)) result.add(track)
+            // 2. Треки из плейлистов — параллельно
+            val playlists = withTimeoutOrNull(4_000L) { supabase.getMyPlaylists(token) } ?: emptyList()
+            val playlistJobs = playlists.take(3).map { pl ->
+                async {
+                    val tracks = withTimeoutOrNull(4_000L) { supabase.getPlaylistTracks(token, pl.id) } ?: emptyList()
+                    tracks.filter { it.trackId !in seenIds }.take(4).mapNotNull { pt ->
+                        withTimeoutOrNull(4_000L) {
+                            audiusApi.getTrackById(pt.trackId).getOrNull()?.toTrack()
+                        }
                     }
                 }
             }
+            playlistJobs.forEach { job ->
+                job.await().forEach { track -> if (seenIds.add(track.id)) result.add(track) }
+            }
 
-            // 3. Треки любимых артистов (по play_count — самые слушаемые первыми)
-            val favArtists = supabase.getFavoriteArtists(token, limit = 20)
+            // 3. Треки любимых артистов — параллельно
+            val favArtists = withTimeoutOrNull(5_000L) {
+                supabase.getFavoriteArtists(token, limit = 15)
+            } ?: emptyList()
             val sorted = favArtists.sortedByDescending { it.playCount }
 
             val artistsToFetch = sorted
                 .drop(followingArtistOffset % sorted.size.coerceAtLeast(1))
-                .take(6)
-            followingArtistOffset = (followingArtistOffset + 6) % sorted.size.coerceAtLeast(1)
+                .take(4)
+            followingArtistOffset = (followingArtistOffset + 4) % sorted.size.coerceAtLeast(1)
 
-            for (artist in artistsToFetch) {
-                audiusApi.getArtistTracks(artist.artistId, limit = 8).getOrNull()
-                    ?.map { it.toTrack() }
-                    ?.filter { it.id !in seenIds }
-                    ?.take(4)
-                    ?.forEach { if (seenIds.add(it.id)) result.add(it) }
+            val artistJobs = artistsToFetch.map { artist ->
+                async {
+                    withTimeoutOrNull(5_000L) {
+                        audiusApi.getArtistTracks(artist.artistId, limit = 6).getOrNull()
+                            ?.map { it.toTrack() }
+                            ?.filter { it.id !in seenIds }
+                            ?.take(3)
+                    } ?: emptyList()
+                }
+            }
+            artistJobs.forEach { job ->
+                job.await().forEach { track -> if (seenIds.add(track.id)) result.add(track) }
             }
         }
 
-        // Fallback — trending если нет данных
+        // Fallback — trending
         if (result.size < needed) {
-            audiusApi.getTrendingTracks(limit = 30).getOrNull()
-                ?.map { it.toTrack() }
-                ?.filter { it.id !in seenIds }
-                ?.shuffled()
-                ?.forEach { if (seenIds.add(it.id)) result.add(it) }
+            withTimeoutOrNull(6_000L) {
+                audiusApi.getTrendingTracks(limit = 30).getOrNull()
+                    ?.map { it.toTrack() }
+                    ?.filter { it.id !in seenIds }
+                    ?.shuffled()
+            }?.forEach { if (seenIds.add(it.id)) result.add(it) }
         }
 
-        return result
+        result
     }
 
     private fun AudiusTrack.toTrack(): Track {
         val artworkUrl = audiusApi.getArtworkUrl(this.artwork, "480x480")
         val previewImageUrl = audiusApi.getArtworkUrl(this.artwork, "150x150")
-        val hdImageUrl = audiusApi.getArtworkUrl(this.artwork, "1000x1000")
+        // Для HD берём 1000x1000, потом 480x480 — но не 150x150 (это LQ)
+        val hdImageUrl = audiusApi.getArtworkUrlExact(this.artwork, "1000x1000")
+            ?: audiusApi.getArtworkUrlExact(this.artwork, "480x480")
         val streamUrl = audiusApi.getStreamUrl(this.id)
         val artistImageUrl = audiusApi.getProfilePictureUrl(this.artist.profilePicture, "480x480")
         val artistHdImageUrl = audiusApi.getProfilePictureUrl(this.artist.profilePicture, "1000x1000")

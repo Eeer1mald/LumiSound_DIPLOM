@@ -189,7 +189,7 @@ class AudioPlayerService @Inject constructor(
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setOnlyAlertOnce(true)
-                .setOngoing(isPlaying)
+                .setOngoing(true)
                 .addAction(R.drawable.ic_notif_prev, "Назад", prevIntent)
                 .addAction(
                     if (isPlaying) R.drawable.ic_notif_pause else R.drawable.ic_notif_play,
@@ -236,6 +236,14 @@ class AudioPlayerService @Inject constructor(
             player.setMediaItems(items, startIndex, 0L)
             player.prepare()
             player.play()
+        }
+    }
+
+    /** Добавляет треки в конец текущей очереди без прерывания воспроизведения */
+    fun appendToQueue(urls: List<String>) {
+        exoPlayer?.let { player ->
+            val items = urls.map { MediaItem.fromUri(it) }
+            items.forEach { player.addMediaItem(it) }
         }
     }
 

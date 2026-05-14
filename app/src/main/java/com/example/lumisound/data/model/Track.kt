@@ -1,5 +1,8 @@
 package com.example.lumisound.data.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class Track(
     val id: String,
     val name: String,

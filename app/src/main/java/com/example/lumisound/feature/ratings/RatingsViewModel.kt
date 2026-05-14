@@ -2,6 +2,7 @@ package com.example.lumisound.feature.ratings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.lumisound.data.cache.AppDataCache
 import com.example.lumisound.data.local.SessionManager
 import com.example.lumisound.data.remote.SupabaseService
 import com.example.lumisound.data.repository.AuthRepository
@@ -33,13 +34,35 @@ enum class RatingsTab(val label: String) {
 @HiltViewModel
 class RatingsViewModel @Inject constructor(
     private val authRepository: AuthRepository,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val cache: AppDataCache,
+    private val audiusApi: com.example.lumisound.data.remote.AudiusApiService
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(RatingsUiState())
     val state: StateFlow<RatingsUiState> = _state.asStateFlow()
 
-    init { load() }
+    fun getStreamUrl(trackId: String): String = audiusApi.getStreamUrl(trackId)
+
+    init {
+        // Мгновенно показываем кэш если готов
+        applyCache()
+        load()
+    }
+
+    private fun applyCache() {
+        if (!cache.isReady.value) return
+        val ratings = cache.myRatings.value
+        val comments = cache.myComments.value
+        val myReviews = ratings.filter { !it.review.isNullOrBlank() }.sortedByDescending { it.reputation }
+        _state.value = _state.value.copy(
+            ratings = ratings,
+            comments = comments,
+            myReviews = myReviews,
+            bestReviews = cache.bestReviews.value,
+            isLoading = false
+        )
+    }
 
     fun load() {
         val token = sessionManager.getAccessToken() ?: return
@@ -60,7 +83,12 @@ class RatingsViewModel @Inject constructor(
             val favTrackIds = favTracks.map { it.trackId }
             val favArtistNames = favArtists.map { it.artistName }
 
-            val bestReviews = authRepository.getBestReviewsForFavorites(token, favTrackIds, favArtistNames)
+            // Если нет избранного — загружаем просто самые популярные рецензии
+            val bestReviews = if (favTrackIds.isEmpty() && favArtistNames.isEmpty()) {
+                authRepository.getBestReviewsForFavorites(token, emptyList(), emptyList(), limit = 30)
+            } else {
+                authRepository.getBestReviewsForFavorites(token, favTrackIds, favArtistNames)
+            }
 
             _state.value = _state.value.copy(
                 isLoading = false,
