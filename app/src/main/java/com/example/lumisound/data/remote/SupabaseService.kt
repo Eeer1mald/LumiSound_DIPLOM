@@ -1359,6 +1359,32 @@ class SupabaseService @Inject constructor(
         } catch (e: Exception) { null }
     }
 
+    /** Батч-загрузка голосов пользователя для списка рецензий — один запрос */
+    suspend fun getMyVotesForReviews(accessToken: String, ratingIds: List<String>): Map<String, Int> {
+        if (ratingIds.isEmpty()) return emptyMap()
+        return try {
+            val userId = getUser(accessToken)?.id ?: return emptyMap()
+            val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+            @Serializable data class VoteRow(
+                @SerialName("rating_id") val ratingId: String,
+                val vote: Int
+            )
+            val ids = ratingIds.distinct().joinToString(",")
+            val response = http.get {
+                url("$baseUrl/rest/v1/review_votes")
+                header("apikey", anonKey)
+                header(HttpHeaders.Authorization, "Bearer $accessToken")
+                parameter("user_id", "eq.$userId")
+                parameter("rating_id", "in.($ids)")
+                parameter("select", "rating_id,vote")
+            }
+            if (response.status.isSuccess()) {
+                json.decodeFromString<List<VoteRow>>(response.bodyAsText())
+                    .associate { it.ratingId to it.vote }
+            } else emptyMap()
+        } catch (e: Exception) { emptyMap() }
+    }
+
     // ========== PLAYLISTS ==========
 
     @Serializable

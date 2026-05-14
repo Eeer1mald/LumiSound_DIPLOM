@@ -61,6 +61,7 @@ interface AuthRepository {
     suspend fun voteReview(accessToken: String, ratingId: String, vote: Int): Result<Unit>
     suspend fun deleteVoteReview(accessToken: String, ratingId: String): Result<Unit>
     suspend fun getMyVoteForReview(accessToken: String, ratingId: String): Int?
+    suspend fun getMyVotesForReviews(accessToken: String, ratingIds: List<String>): Map<String, Int>
 
     // Playlists
     suspend fun createPlaylist(accessToken: String, name: String, description: String? = null, isPublic: Boolean = false, isSynthesis: Boolean = false, synthesisCode: String? = null): Result<SupabaseService.PlaylistResponse>

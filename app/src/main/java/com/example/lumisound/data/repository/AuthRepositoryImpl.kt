@@ -291,6 +291,10 @@ class AuthRepositoryImpl @Inject constructor(
         return supabase.getMyVoteForReview(accessToken, ratingId)
     }
 
+    override suspend fun getMyVotesForReviews(accessToken: String, ratingIds: List<String>): Map<String, Int> {
+        return supabase.getMyVotesForReviews(accessToken, ratingIds)
+    }
+
     override suspend fun createPlaylist(accessToken: String, name: String, description: String?, isPublic: Boolean, isSynthesis: Boolean, synthesisCode: String?): Result<SupabaseService.PlaylistResponse> {
         return supabase.createPlaylist(accessToken, name, description, isPublic, isSynthesis, synthesisCode)
     }

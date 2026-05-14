@@ -98,11 +98,18 @@ class ReviewViewModel @Inject constructor(
                 } else review
             }
 
+            // Загружаем голоса пользователя для всех рецензий одним батч-запросом
+            val ratingIds = reviews.map { it.id }
+            val myVotes = if (ratingIds.isNotEmpty())
+                authRepository.getMyVotesForReviews(token, ratingIds)
+            else emptyMap()
+
             _state.value = _state.value.copy(
                 isLoading = false,
                 existingRating = existing,
                 averageRating = averageRating,
                 reviews = reviews,
+                myVotes = myVotes,
                 rhymeScore = existing?.rhymeScore,
                 imageryScore = existing?.imageryScore,
                 structureScore = existing?.structureScore,
@@ -272,6 +279,11 @@ class ReviewViewModel @Inject constructor(
         // 2. Сетевой запрос
         viewModelScope.launch {
             val result = authRepository.voteReview(token, ratingId, vote)
+
+            result.onSuccess {
+                // Инвалидируем кэш чтобы при следующем открытии загрузились актуальные данные
+                loadedTrackId = null
+            }
 
             result.onFailure {
                 // Откат при ошибке
